@@ -1,179 +1,175 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import path from "node:path";
 
-const INPUT_FILE = "tge-spec.md";
-const OUTPUTS = {
-  findings: "redteam-findings.md",
-  killReport: "kill-report.md",
-  remediation: "remediation.md",
-  judgeEvaluation: "judge-evaluation.md",
+const SPEC_FILE = "tge-spec.md";
+const OUTPUT_DIR = "outputs";
+
+const AGENT_REPORTS = [
+  { agent: "Dump Risk Agent", file: "outputs/dump-risk.md" },
+  { agent: "Protocol Risk Agent", file: "outputs/protocol-risk.md" },
+  { agent: "Regulatory Risk Agent", file: "outputs/regulatory-risk.md" },
+  { agent: "CT Adversary Agent", file: "outputs/ct-adversary.md" },
+];
+
+const GENERATED_OUTPUTS = {
+  killReport: "outputs/kill-report.md",
+  remediation: "outputs/remediation.md",
+  judgeEvaluation: "outputs/judge-evaluation.md",
 };
 
-const severityWeight = {
+const REQUIRED_FIELDS = [
+  "Specific risk",
+  "Severity",
+  "Confidence",
+  "Evidence from tge-spec.md",
+  "Why it matters",
+  "Remediation",
+  "Remediation priority",
+];
+
+const SEVERITY_WEIGHT = {
   low: 2,
   medium: 5,
   high: 12,
   critical: 20,
 };
 
-const severityRank = {
+const SEVERITY_RANK = {
   low: 1,
   medium: 2,
   high: 3,
   critical: 4,
 };
 
-const confidenceRank = {
+const CONFIDENCE_RANK = {
   low: 1,
   medium: 2,
   high: 3,
 };
 
-function quoteEvidence(spec, patterns) {
-  const lines = spec
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+const SAFETY_BLOCKLIST = [
+  "exploit code",
+  "attack payload",
+  "step-by-step exploit",
+  "bypass signature",
+  "steal funds",
+  "drain funds",
+  "legal advice:",
+  "this is legally compliant",
+];
 
-  for (const pattern of patterns) {
-    const hit = lines.find((line) => line.toLowerCase().includes(pattern.toLowerCase()));
-    if (hit) return hit.replace(/^[-# ]+/, "");
-  }
-
-  return "Evidence not explicit in TGE spec.";
+function normalize(value) {
+  return value.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
-function finding({ id, agent, title, severity, confidence, evidence, risk, remediation, priority }) {
+function stripQuotes(value) {
+  return value.trim().replace(/^["'`]+|["'`]+$/g, "");
+}
+
+async function readText(filePath) {
+  if (!existsSync(filePath)) {
+    return null;
+  }
+  return readFile(filePath, "utf8");
+}
+
+function splitFindings(markdown) {
+  const matches = [...markdown.matchAll(/^##\s+Finding\s+([A-Z]+-\d{3})[^\n]*\n/gm)];
+  if (matches.length === 0) {
+    return [{ id: "UNKNOWN", body: markdown }];
+  }
+
+  return matches.map((match, index) => {
+    const start = match.index ?? 0;
+    const end = matches[index + 1]?.index ?? markdown.length;
+    return {
+      id: match[1],
+      body: markdown.slice(start, end),
+    };
+  });
+}
+
+function extractField(markdown, fieldName) {
+  const escaped = fieldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`^-\\s*(?:\\*\\*)?${escaped}(?:\\*\\*)?\\s*:\\s*(.+)$`, "im");
+  return markdown.match(pattern)?.[1]?.trim() ?? "";
+}
+
+function validateFinding(report, finding, specText) {
+  const fields = Object.fromEntries(
+    REQUIRED_FIELDS.map((field) => [field, extractField(finding.body, field)]),
+  );
+  const missingFields = REQUIRED_FIELDS.filter((field) => fields[field].length === 0);
+  const problems = [...missingFields.map((field) => `missing field: ${field}`)];
+
+  const severity = normalize(fields["Severity"]);
+  const confidence = normalize(fields["Confidence"]);
+  const evidence = stripQuotes(fields["Evidence from tge-spec.md"]);
+
+  if (fields["Severity"] && !(severity in SEVERITY_WEIGHT)) {
+    problems.push(`invalid severity: ${fields["Severity"]}`);
+  }
+
+  if (fields["Confidence"] && !(confidence in CONFIDENCE_RANK)) {
+    problems.push(`invalid confidence: ${fields["Confidence"]}`);
+  }
+
+  if (evidence && !normalize(specText).includes(normalize(evidence))) {
+    problems.push("evidence is not an exact quote from tge-spec.md");
+  }
+
+  const unsafeTerm = SAFETY_BLOCKLIST.find((term) => normalize(finding.body).includes(term));
+  if (unsafeTerm) {
+    problems.push(`safety boundary violation: ${unsafeTerm}`);
+  }
+
   return {
-    id,
-    agent,
-    title,
+    id: finding.id,
+    agent: report.agent,
+    file: report.file,
+    fields,
     severity,
     confidence,
-    evidence,
-    risk,
-    remediation,
-    priority,
+    passed: problems.length === 0,
+    problems,
   };
 }
 
-function dumpRiskAgent(spec) {
-  return [
-    finding({
-      id: "DUMP-001",
-      agent: "Dump Risk Agent",
-      title: "Investor unlock cliff may create a visible sell-pressure event",
-      severity: "high",
-      confidence: "high",
-      evidence: quoteEvidence(spec, ["Investors: 18%", "6-month cliff"]),
-      risk: "A large investor allocation with a short cliff can become the launch's first public trust test.",
-      remediation: "Model month-by-month unlock pressure, publish a transparent unlock calendar, and consider longer lockups or staggered unlock tranches before listing talks.",
-      priority: "P0 before CEX listing conversations",
-    }),
-    finding({
-      id: "DUMP-002",
-      agent: "Dump Risk Agent",
-      title: "TGE liquidity and market-making allocation needs explicit guardrails",
-      severity: "medium",
-      confidence: "medium",
-      evidence: quoteEvidence(spec, ["Liquidity and market making"]),
-      risk: "The spec does not explain how liquidity inventory can be used, creating optics risk around early price support or insider advantage.",
-      remediation: "Document market-maker mandate, inventory limits, reporting cadence, and conflict controls.",
-      priority: "P1 before public launch materials",
-    }),
-  ];
+function validateReport(report, markdown, specText) {
+  const findings = splitFindings(markdown).map((finding) =>
+    validateFinding(report, finding, specText),
+  );
+  return {
+    ...report,
+    findings,
+    passed: findings.every((finding) => finding.passed),
+    missingFields: findings.flatMap((finding) =>
+      finding.problems.map((problem) => `${finding.id}: ${problem}`),
+    ),
+  };
 }
 
-function protocolRiskAgent(spec) {
-  return [
-    finding({
-      id: "PROTO-001",
-      agent: "Protocol Risk Agent",
-      title: "Emergency pause and incident response policy is undefined",
-      severity: "high",
-      confidence: "high",
-      evidence: quoteEvidence(spec, ["Emergency pause policy"]),
-      risk: "A launch can fail operationally if the team cannot explain who can pause, when they can pause, and how users are protected.",
-      remediation: "Define pause authority, multisig policy, event disclosure process, and post-incident restart criteria. This is defensive review only and does not include exploit instructions.",
-      priority: "P0 before mainnet deployment",
-    }),
-    finding({
-      id: "PROTO-002",
-      agent: "Protocol Risk Agent",
-      title: "Audit timing is too late for launch-readiness confidence",
-      severity: "medium",
-      confidence: "high",
-      evidence: quoteEvidence(spec, ["External audit"]),
-      risk: "Planning audit after prototype is normal, but launch messaging should not imply production readiness before audit findings are closed.",
-      remediation: "Separate prototype demo from production launch, publish audit status honestly, and require all high-severity audit items to close before TGE.",
-      priority: "P1 before investor or listing materials",
-    }),
-  ];
-}
-
-function regulatoryRiskAgent(spec) {
-  return [
-    finding({
-      id: "REG-001",
-      agent: "Regulatory Risk Agent",
-      title: "Public sale and US participation are unresolved risk flags",
-      severity: "critical",
-      confidence: "medium",
-      evidence: `${quoteEvidence(spec, ["Public sale"])} / ${quoteEvidence(spec, ["funds in Singapore", "US investors", "and the US"])}`,
-      risk: "The spec mentions US investors and a possible public sale without a distribution policy. This is not legal advice, but it is a launch-risk flag.",
-      remediation: "Get qualified legal review, define jurisdiction gating, investor eligibility, transfer restrictions, and communications policy before any public sale decision.",
-      priority: "P0 before fundraising, airdrop, or public sale announcement",
-    }),
-    finding({
-      id: "REG-002",
-      agent: "Regulatory Risk Agent",
-      title: "Referral and trading rewards may create incentive-design concerns",
-      severity: "medium",
-      confidence: "medium",
-      evidence: quoteEvidence(spec, ["airdrops, referrals, and trading rewards"]),
-      risk: "Rewards tied to trading or referrals can attract regulatory, market integrity, or user-protection scrutiny depending on execution.",
-      remediation: "Review campaign mechanics with counsel and compliance reviewers; avoid promising returns or encouraging manipulative trading behavior.",
-      priority: "P1 before campaign design",
-    }),
-  ];
-}
-
-function ctAdversaryAgent(spec) {
-  return [
-    finding({
-      id: "CT-001",
-      agent: "CT Adversary Agent",
-      title: "Narrative sounds derivative and may be attacked as tokenizing a SaaS metaphor",
-      severity: "medium",
-      confidence: "high",
-      evidence: quoteEvidence(spec, ["Stripe Atlas"]),
-      risk: "Crypto Twitter can frame the launch as a generic infrastructure metaphor plus token incentives, not a token with clear necessity.",
-      remediation: "Clarify why the token is necessary, what users can do without speculation, and what measurable network behavior the token coordinates.",
-      priority: "P1 before public narrative push",
-    }),
-    finding({
-      id: "CT-002",
-      agent: "CT Adversary Agent",
-      title: "Points-to-token farm concern is already present in founder notes",
-      severity: "high",
-      confidence: "high",
-      evidence: quoteEvidence(spec, ["points-to-token farm"]),
-      risk: "If the founder already fears this critique, the launch needs stronger proof of utility before incentives begin.",
-      remediation: "Publish user workflows, non-speculative utility, and retention metrics before token reward campaigns.",
-      priority: "P0 before campaign launch",
-    }),
-  ];
+function sortFindings(findings) {
+  return [...findings].sort((a, b) => {
+    const severityDelta = SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity];
+    if (severityDelta !== 0) return severityDelta;
+    return CONFIDENCE_RANK[b.confidence] - CONFIDENCE_RANK[a.confidence];
+  });
 }
 
 function scoreFindings(findings) {
-  const penalty = findings.reduce((sum, item) => sum + severityWeight[item.severity], 0);
-  const criticalCount = findings.filter((item) => item.severity === "critical").length;
-  const highCount = findings.filter((item) => item.severity === "high").length;
+  const penalty = findings.reduce(
+    (sum, finding) => sum + (SEVERITY_WEIGHT[finding.severity] ?? 0),
+    0,
+  );
+  const criticalCount = findings.filter((finding) => finding.severity === "critical").length;
+  const highCount = findings.filter((finding) => finding.severity === "high").length;
   const score = Math.max(0, 100 - penalty);
   const readiness =
     criticalCount > 0
       ? "NO-GO"
-      : highCount > 1
+      : highCount >= 2
         ? "CONDITIONAL"
         : score >= 75
           ? "READY WITH MONITORING"
@@ -182,37 +178,23 @@ function scoreFindings(findings) {
   return { score, readiness, penalty, criticalCount, highCount };
 }
 
-function sortFindings(findings) {
-  return [...findings].sort((a, b) => {
-    const bySeverity = severityRank[b.severity] - severityRank[a.severity];
-    if (bySeverity !== 0) return bySeverity;
-    return confidenceRank[b.confidence] - confidenceRank[a.confidence];
-  });
+function renderFinding(finding, index) {
+  return `### ${index + 1}. ${finding.id}: ${finding.fields["Specific risk"]}
+
+- Agent: ${finding.agent}
+- Severity: ${finding.fields["Severity"]}
+- Confidence: ${finding.fields["Confidence"]}
+- Evidence from tge-spec.md: ${stripQuotes(finding.fields["Evidence from tge-spec.md"])}
+- Why it matters: ${finding.fields["Why it matters"]}
+- Remediation priority: ${finding.fields["Remediation priority"]}
+- Remediation: ${finding.fields["Remediation"]}`;
 }
 
-function renderFinding(item, index) {
-  return `### ${index + 1}. ${item.id}: ${item.title}
-
-- Agent: ${item.agent}
-- Severity: ${item.severity}
-- Confidence: ${item.confidence}
-- Evidence from TGE spec: "${item.evidence}"
-- Risk: ${item.risk}
-- Remediation priority: ${item.priority}
-- Recommended remediation: ${item.remediation}`;
-}
-
-function renderFindings(findings) {
-  return `# Red-Team Findings
-
-Defensive risk review only. This file does not provide exploit instructions or legal advice.
-
-${sortFindings(findings).map(renderFinding).join("\n\n")}`;
-}
-
-function renderKillReport(findings, score) {
-  const top = sortFindings(findings).slice(0, 4);
+function renderKillReport(validFindings, score, revisionReports) {
+  const sorted = sortFindings(validFindings);
   return `# Kill Report
+
+Generated by the Judge Agent / Orchestrator after verifying Codex-authored agent markdown files.
 
 ## Launch Readiness
 
@@ -220,119 +202,141 @@ function renderKillReport(findings, score) {
 - Recommendation: ${score.readiness}
 - Critical findings: ${score.criticalCount}
 - High findings: ${score.highCount}
-
-## Executive Summary
-
-Token Launch Lab found ${findings.length} launch failure modes across dump risk, protocol risk, regulatory risk, and public narrative risk. The current sample TGE should not be treated as launch-ready until all P0 items are resolved.
+- Reports requiring revision: ${revisionReports.length}
 
 ## Top Failure Modes
 
-${top.map(renderFinding).join("\n\n")}
+${sorted.slice(0, 6).map(renderFinding).join("\n\n")}
+
+## Termination Criteria
+
+The orchestrator terminates only after every required agent report exists and every finding has the required schema: specific risk, severity, confidence, evidence from \`tge-spec.md\`, why it matters, remediation, and remediation priority.
 
 ## Safety Boundaries
 
+- Defensive review only.
 - No exploit instructions are generated.
-- No legal advice is provided.
-- Findings are defensive launch-readiness signals for founders, exchanges, launchpads, and reviewers.`;
+- No legal advice is provided.`;
 }
 
-function renderRemediation(findings) {
-  const sorted = sortFindings(findings);
-  return `# Remediation Plan
+function renderRemediation(validFindings, revisionReports) {
+  const sorted = sortFindings(validFindings);
+  const p0 = sorted.filter((finding) => finding.fields["Remediation priority"].startsWith("P0"));
+  const p1 = sorted.filter((finding) => finding.fields["Remediation priority"].startsWith("P1"));
 
-## P0: Fix Before Mainnet Or Listing Conversations
+  return `# Remediation
 
-${sorted
-  .filter((item) => item.priority.startsWith("P0"))
-  .map((item) => `- ${item.id}: ${item.remediation}`)
-  .join("\n")}
+## Recovery / Revision Loop
+
+${revisionReports.length === 0 ? "- No report revisions required." : revisionReports.map((report) => `- Revise ${report.file}: ${report.missingFields.join("; ")}`).join("\n")}
+
+## P0: Fix Before Mainnet, Listing, Or Public Campaigns
+
+${p0.map((finding) => `- ${finding.id}: ${finding.fields["Remediation"]}`).join("\n")}
 
 ## P1: Fix Before Public Launch Materials
 
-${sorted
-  .filter((item) => item.priority.startsWith("P1"))
-  .map((item) => `- ${item.id}: ${item.remediation}`)
-  .join("\n")}
+${p1.map((finding) => `- ${finding.id}: ${finding.fields["Remediation"]}`).join("\n")}
 
-## Founder Review Checklist
+## Re-run Command
 
-- Confirm vesting and unlock calendar are public and easy to understand.
-- Confirm incident response and pause policy are documented.
-- Confirm qualified legal review before public sale or incentive campaigns.
-- Confirm token narrative explains non-speculative utility.
-- Re-run \`node src/orchestrator.js\` after updating \`tge-spec.md\`.`;
+\`\`\`bash
+node src/orchestrator.js
+\`\`\``;
 }
 
-function renderJudgeEvaluation(findings, score) {
-  const agents = [...new Set(findings.map((item) => item.agent))];
+function renderJudgeEvaluation(reportResults, validFindings, score, revisionReports) {
   return `# Judge Evaluation
 
 ## Harness / Skills Track Fit
 
-Token Launch Lab is an adversarial multi-agent harness. The harness itself is the deliverable: it defines agent roles, shared input, inspectable outputs, scoring, termination, and safety boundaries.
+Token Launch Lab is a Codex-backed adversarial agent harness. Codex is given \`codex-goal.md\` as the /goal prompt, reads \`AGENTS.md\`, writes per-agent markdown memory under \`outputs/\`, and then the local Judge Agent verifies the outputs.
 
-## Agent Roles
+## Codex Integration
 
-${agents.map((agent) => `- ${agent}`).join("\n")}
-- Orchestrator / Judge Agent
+- Codex goal prompt: \`codex-goal.md\`
+- Agent operating rules: \`AGENTS.md\`
+- Shared launch spec: \`tge-spec.md\`
+- Inspectable markdown memory: \`outputs/*.md\`
+- Verification script: \`src/orchestrator.js\`
 
-## Shared Input
+## Multi-Agent Reports
 
-- \`${INPUT_FILE}\`
+${reportResults.map((report) => `- ${report.agent}: ${report.passed ? "PASS" : "NEEDS REVISION"} (${report.file})`).join("\n")}
 
-## Inspectable Outputs
+## Verification
 
-- \`${OUTPUTS.findings}\`
-- \`${OUTPUTS.killReport}\`
-- \`${OUTPUTS.remediation}\`
-- \`${OUTPUTS.judgeEvaluation}\`
+- Valid findings: ${validFindings.length}
+- Reports needing revision: ${revisionReports.length}
+- Final launch readiness score: ${score.score}/100
+- Recommendation: ${score.readiness}
 
-## Scoring System
+## Termination Criteria
 
-- Severity: low / medium / high / critical
-- Confidence: low / medium / high
-- Evidence from TGE spec: required for every finding
-- Remediation priority: P0 / P1
-- Launch readiness score: ${score.score}/100
-- Launch recommendation: ${score.readiness}
+The run terminates when all agent reports pass schema and safety verification. If any report fails, the orchestrator prints missing fields and the revision loop sends only failed files back to Codex for repair.
 
 ## Safety Policy
 
-This is defensive risk review only. It does not generate exploit instructions and does not provide legal advice.`;
+Defensive review only. No exploit instructions. No legal advice.`;
 }
 
 async function main() {
-  if (!existsSync(INPUT_FILE)) {
-    throw new Error(`Missing ${INPUT_FILE}. Add a TGE spec before running the harness.`);
+  const specText = await readText(SPEC_FILE);
+  if (!specText) {
+    throw new Error(`Missing ${SPEC_FILE}`);
   }
 
-  const spec = await readFile(INPUT_FILE, "utf8");
-  const findings = [
-    ...dumpRiskAgent(spec),
-    ...protocolRiskAgent(spec),
-    ...regulatoryRiskAgent(spec),
-    ...ctAdversaryAgent(spec),
-  ];
-  const score = scoreFindings(findings);
-
-  await writeFile(OUTPUTS.findings, `${renderFindings(findings)}\n`);
-  await writeFile(OUTPUTS.killReport, `${renderKillReport(findings, score)}\n`);
-  await writeFile(OUTPUTS.remediation, `${renderRemediation(findings)}\n`);
-  await writeFile(OUTPUTS.judgeEvaluation, `${renderJudgeEvaluation(findings, score)}\n`);
-
-  console.log("\nToken Launch Lab: Demo Kill Report\n");
-  console.log(`Launch readiness score: ${score.score}/100`);
-  console.log(`Recommendation: ${score.readiness}`);
-  console.log(`Findings: ${findings.length} total (${score.criticalCount} critical, ${score.highCount} high)`);
-  console.log("\nTop findings:");
-  for (const item of sortFindings(findings).slice(0, 4)) {
-    console.log(`- [${item.severity.toUpperCase()} / ${item.confidence}] ${item.id}: ${item.title}`);
-    console.log(`  Evidence: ${item.evidence}`);
-    console.log(`  Priority: ${item.priority}`);
+  const reportResults = [];
+  for (const report of AGENT_REPORTS) {
+    const markdown = await readText(report.file);
+    if (!markdown) {
+      reportResults.push({
+        ...report,
+        findings: [],
+        passed: false,
+        missingFields: [`missing report file: ${report.file}`],
+      });
+      continue;
+    }
+    reportResults.push(validateReport(report, markdown, specText));
   }
-  console.log("\nGenerated files:");
-  for (const output of Object.values(OUTPUTS)) {
+
+  const validFindings = reportResults
+    .flatMap((report) => report.findings)
+    .filter((finding) => finding.passed);
+  const revisionReports = reportResults.filter((report) => !report.passed);
+  const score = scoreFindings(validFindings);
+
+  await mkdir(OUTPUT_DIR, { recursive: true });
+  await writeFile(GENERATED_OUTPUTS.killReport, `${renderKillReport(validFindings, score, revisionReports)}\n`);
+  await writeFile(GENERATED_OUTPUTS.remediation, `${renderRemediation(validFindings, revisionReports)}\n`);
+  await writeFile(
+    GENERATED_OUTPUTS.judgeEvaluation,
+    `${renderJudgeEvaluation(reportResults, validFindings, score, revisionReports)}\n`,
+  );
+
+  console.log("\nToken Launch Lab: Codex Harness Verification\n");
+  for (const report of reportResults) {
+    console.log(`${report.passed ? "PASS" : "REVISION"} ${report.agent} (${report.file})`);
+    if (!report.passed) {
+      for (const problem of report.missingFields) {
+        console.log(`  - ${problem}`);
+      }
+    }
+  }
+
+  console.log("\nFinal Kill Report");
+  console.log(`- Launch readiness score: ${score.score}/100`);
+  console.log(`- Recommendation: ${score.readiness}`);
+  console.log(`- Valid findings: ${validFindings.length}`);
+  console.log(`- Reports needing revision: ${revisionReports.length}`);
+  console.log("\nGenerated / updated:");
+  for (const output of Object.values(GENERATED_OUTPUTS)) {
     console.log(`- ${output}`);
+  }
+
+  if (revisionReports.length > 0) {
+    process.exitCode = 1;
   }
 }
 

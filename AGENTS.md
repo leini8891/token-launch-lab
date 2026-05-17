@@ -1,108 +1,184 @@
-# AGENTS.md — Rules for Codex Building Token Launch Lab
+# AGENTS.md — Token Launch Lab Harness Rules
 
-## What You Are Building
+## What This Is
 
-You are building "Token Launch Lab" — an adversarial multi-agent harness for crypto token launch pre-mortems. It is the entry for the Harness/Skills Track at Ralphthon @SG.
+Token Launch Lab is a **Codex-backed adversarial multi-agent harness** for crypto token launch pre-mortems.
 
-This is NOT a chatbot and not a generic report generator. The deliverable is the orchestrator + adversarial agent personas + shared input contract + inspectable output files + scoring / judge logic.
+This is not a chatbot and not a static report generator. The deliverable is the harness:
 
-## Current Harness Entry
+- a Codex `/goal` prompt
+- clearly separated adversarial agent roles
+- a shared markdown input file
+- inspectable markdown memory under `outputs/`
+- a local Judge Agent / Orchestrator that verifies reports
+- termination criteria and a recovery / revision loop
 
-The primary Harness demo is:
+## Codex Integration
+
+The Codex entrypoint is:
+
+```text
+codex-goal.md
+```
+
+In the live demo, show the judge:
+
+1. `codex-goal.md` — the exact `/goal` prompt
+2. `AGENTS.md` — the agent role contracts
+3. `tge-spec.md` — the shared input
+4. `outputs/*.md` — inspectable agent memory
+5. `src/orchestrator.js` — the Judge Agent verifier
+6. `outputs/kill-report.md` — the final scored output
+
+## Shared Input
+
+All agents read:
+
+```text
+tge-spec.md
+```
+
+Agents must quote evidence from this file. The Judge Agent rejects findings whose evidence is not traceable to `tge-spec.md`.
+
+## Agent Roles
+
+### Dump Risk Agent
+
+Reviews:
+
+- investor and team unlocks
+- TGE float
+- liquidity and market-maker allocation
+- dump pressure and launch optics
+
+Writes:
+
+```text
+outputs/dump-risk.md
+```
+
+### Protocol Risk Agent
+
+Reviews:
+
+- defensive protocol readiness
+- audit status
+- pause policy
+- multisig and incident response assumptions
+
+Writes:
+
+```text
+outputs/protocol-risk.md
+```
+
+Safety boundary: identify missing controls only. Do not generate exploit instructions.
+
+### Regulatory Risk Agent
+
+Reviews:
+
+- public sale risk flags
+- jurisdiction and distribution ambiguity
+- incentive campaign risk
+- communication and eligibility concerns
+
+Writes:
+
+```text
+outputs/regulatory-risk.md
+```
+
+Safety boundary: this is not legal advice. Frame output as risk flags for qualified review.
+
+### CT Adversary Agent
+
+Reviews:
+
+- public narrative fragility
+- likely crypto Twitter criticism
+- token necessity
+- incentive and farming optics
+
+Writes:
+
+```text
+outputs/ct-adversary.md
+```
+
+Safety boundary: stress-test narrative without harassment, misinformation, or market manipulation.
+
+### Judge Agent / Orchestrator
+
+Implemented in:
+
+```text
+src/orchestrator.js
+```
+
+It reads the four agent reports, verifies schema and safety boundaries, computes launch readiness, and writes:
+
+```text
+outputs/kill-report.md
+outputs/remediation.md
+outputs/judge-evaluation.md
+```
+
+## Required Finding Schema
+
+Every finding in every agent report must include:
+
+```markdown
+## Finding <ID>
+
+- Specific risk: <one concrete risk>
+- Severity: low | medium | high | critical
+- Confidence: low | medium | high
+- Evidence from tge-spec.md: <exact quote from tge-spec.md>
+- Why it matters: <business / launch impact>
+- Remediation: <defensive fix>
+- Remediation priority: <P0 / P1 / P2 and timing>
+```
+
+## Verification
+
+Run:
 
 ```bash
 node src/orchestrator.js
 ```
 
-It reads `tge-spec.md` and writes:
+The script prints:
 
-- `redteam-findings.md`
-- `kill-report.md`
-- `remediation.md`
-- `judge-evaluation.md`
+- which agent reports passed
+- which reports need revision
+- missing fields
+- final launch readiness score
 
-## Agent Roles
+## Termination Criteria
 
-- Dump Risk Agent
-- Protocol Risk Agent
-- Regulatory Risk Agent
-- CT Adversary Agent
-- Orchestrator / Judge Agent
+The run is complete only when:
 
-## Read Order (Every Session)
+- all four agent reports exist
+- every finding has all required fields
+- severity and confidence values are valid
+- evidence is traceable to `tge-spec.md`
+- no safety boundary violations are detected
+- `outputs/kill-report.md`, `outputs/remediation.md`, and `outputs/judge-evaluation.md` are generated
 
-Before any change, read in this order:
+## Recovery / Revision Loop
 
-1. `plan.md` — milestones and definition of done
-2. `pod-spec.md` — the immutable protocol that sub-agents must follow
-3. `notes.md` — running log of decisions, blockers, and changes
-4. `decisions.log` — chronological structured record of agent dispatches
+If the orchestrator reports a failed file:
 
-After any meaningful change, append to `notes.md` with `[ISO-8601 timestamp] one-line rationale`.
+1. Codex revises only that failed `outputs/*.md` file.
+2. Codex preserves passing files.
+3. Codex re-runs `node src/orchestrator.js`.
+4. The loop stops when all reports pass.
 
-## Working Principles
+## Safety Rules
 
-### Demo over engineering
-This is a 6-hour hackathon project. If a feature does not contribute to the 7PM live demo, do not build it. Cut, do not extend.
-
-### Markdown is the wire format
-Sub-agents communicate through files on disk, not hidden chat state. This makes the harness inspectable, replayable, and credible as real delegation.
-
-### One retry max
-If an upstream artifact fails downstream validation, dispatch back to the upstream agent ONCE with the failure context. Never loop. Never escalate to a third retry. Surface the failure and continue.
-
-### Fail loud, log everything
-Every agent dispatch writes a `decisions.log` entry: `[timestamp] [agent] [action] [outcome] [note]`. Crashes write a stack trace. Silent failures are forbidden.
-
-### Deterministic file layout
-Filenames, directory layout, and file schemas in `pod-spec.md` are immutable for v1. Do not let agents invent new filenames.
-
-### Safety boundaries
-This project is defensive risk review only. Do not generate exploit instructions. Do not provide legal advice. Regulatory output must be framed as "risk flags for qualified review."
-
-## Tech Stack (fixed)
-
-- Node 20+
-- Single package, no monorepo
-- Plain Node.js orchestrator for the adversarial Harness demo
-- TypeScript CLI remains for the legacy vesting/dashboard demo
-- No LangChain, LlamaIndex, AutoGen, CrewAI, or other agent framework. The harness IS the thing.
-
-Each agent's system prompt lives in its own file under `src/agents/<name>/system-prompt.md`. Skills live in `src/agents/<name>/skills/*.md` and are appended to the system prompt at load time.
-
-## Forbidden
-
-- Adding a database
-- Adding authentication
-- Adding a payment flow
-- Adding model selection UI (one model hardcoded for v1)
-- Refactoring "for clarity" if it costs more than 10 minutes
-- Adding tests for the pod itself (artifact code gets tested by Builder; pod doesn't need tests for the demo)
-- Using LangChain, LlamaIndex, AutoGen, CrewAI, or any agent framework
-
-## Required at Stop Time (5PM submission)
-
-- `node src/orchestrator.js` runs
-- `tge-spec.md` exists as shared input
-- `redteam-findings.md`, `kill-report.md`, `remediation.md`, and `judge-evaluation.md` are generated
-- Every finding includes severity, confidence, evidence from the TGE spec, and remediation priority
-- `judge-evaluation.md` includes launch readiness score and Harness track explanation
-- Legacy `pod run "<spec>"` and dashboard remain available as supporting evidence
-- `PITCH.md` exists with the 45-second pitch
-- `SUBMISSION.md` exists with the text to paste into the Ralphthon submission form
-
-## Decision-Making Default
-
-When unsure, default to: **keep it simple, make it demo**.
-- If a change makes the demo more vivid: do it.
-- If it makes the code "cleaner" but invisible to the audience: skip it.
-- If it adds infrastructure but doesn't change what the audience sees: skip it.
-
-## Update Discipline
-
-If you change `plan.md`:
-- Log the change in `decisions.log` with rationale.
-- If a milestone slips, mark it slipped. Do not silently re-order.
-
-If `pod-spec.md` needs a change:
-- Stop. Surface the question. This file is the harness contract — changing it mid-run breaks the demo narrative.
+- Defensive review only.
+- Do not generate exploit instructions.
+- Do not provide legal advice.
+- Do not produce harassment or market manipulation content.
+- Do not hide findings in non-inspectable state; write them to markdown.
