@@ -1,10 +1,33 @@
-# AGENTS.md — Rules for Codex Building Agent Pod
+# AGENTS.md — Rules for Codex Building Token Launch Lab
 
 ## What You Are Building
 
-You are building "Agent Pod" — a multi-agent dev team in a box. It is the entry for the Harness/Skills Track at Ralphthon @SG.
+You are building "Token Launch Lab" — an adversarial multi-agent harness for crypto token launch pre-mortems. It is the entry for the Harness/Skills Track at Ralphthon @SG.
 
-This is NOT a chatbot. This is a delegation harness. The deliverable is the orchestrator + four agent personas + shared-state protocol + a live dashboard.
+This is NOT a chatbot and not a generic report generator. The deliverable is the orchestrator + adversarial agent personas + shared input contract + inspectable output files + scoring / judge logic.
+
+## Current Harness Entry
+
+The primary Harness demo is:
+
+```bash
+node src/orchestrator.js
+```
+
+It reads `tge-spec.md` and writes:
+
+- `redteam-findings.md`
+- `kill-report.md`
+- `remediation.md`
+- `judge-evaluation.md`
+
+## Agent Roles
+
+- Dump Risk Agent
+- Protocol Risk Agent
+- Regulatory Risk Agent
+- CT Adversary Agent
+- Orchestrator / Judge Agent
 
 ## Read Order (Every Session)
 
@@ -23,7 +46,7 @@ After any meaningful change, append to `notes.md` with `[ISO-8601 timestamp] one
 This is a 6-hour hackathon project. If a feature does not contribute to the 7PM live demo, do not build it. Cut, do not extend.
 
 ### Markdown is the wire format
-Sub-agents communicate via files on disk, not in-process function calls. This makes the pod inspectable, replay-able, and credible as real delegation. Do not introduce direct agent-to-agent calls or shared in-memory state.
+Sub-agents communicate through files on disk, not hidden chat state. This makes the harness inspectable, replayable, and credible as real delegation.
 
 ### One retry max
 If an upstream artifact fails downstream validation, dispatch back to the upstream agent ONCE with the failure context. Never loop. Never escalate to a third retry. Surface the failure and continue.
@@ -34,19 +57,16 @@ Every agent dispatch writes a `decisions.log` entry: `[timestamp] [agent] [actio
 ### Deterministic file layout
 Filenames, directory layout, and file schemas in `pod-spec.md` are immutable for v1. Do not let agents invent new filenames.
 
-### Strict TypeScript
-`strict: true` in tsconfig. No `any`. No `// @ts-ignore`. If types fight you, fix the design, not the type.
+### Safety boundaries
+This project is defensive risk review only. Do not generate exploit instructions. Do not provide legal advice. Regulatory output must be framed as "risk flags for qualified review."
 
 ## Tech Stack (fixed)
 
 - Node 20+
-- TypeScript with strict mode
 - Single package, no monorepo
-- `commander` for CLI
-- `chalk` for colored console output
-- `chokidar` for file watching (dashboard)
-- `next` (App Router) for the dashboard
-- OpenAI Node SDK directly. **No LangChain. No agent frameworks.** The harness IS the thing — using a framework would defeat the entry.
+- Plain Node.js orchestrator for the adversarial Harness demo
+- TypeScript CLI remains for the legacy vesting/dashboard demo
+- No LangChain, LlamaIndex, AutoGen, CrewAI, or other agent framework. The harness IS the thing.
 
 Each agent's system prompt lives in its own file under `src/agents/<name>/system-prompt.md`. Skills live in `src/agents/<name>/skills/*.md` and are appended to the system prompt at load time.
 
@@ -62,11 +82,12 @@ Each agent's system prompt lives in its own file under `src/agents/<name>/system
 
 ## Required at Stop Time (5PM submission)
 
-- `pod init "<spec>"` works
-- `pod run "<spec>"` produces `artifacts/` with code + tests, plus `audit-report.md`, `README.md`, `PITCH.md`
-- `pod dashboard` opens a working dashboard at localhost:3000
-- One pre-run canned demo exists under `demos/vesting/`
-- Root `README.md` explains how to run the canned demo in under 60 seconds
+- `node src/orchestrator.js` runs
+- `tge-spec.md` exists as shared input
+- `redteam-findings.md`, `kill-report.md`, `remediation.md`, and `judge-evaluation.md` are generated
+- Every finding includes severity, confidence, evidence from the TGE spec, and remediation priority
+- `judge-evaluation.md` includes launch readiness score and Harness track explanation
+- Legacy `pod run "<spec>"` and dashboard remain available as supporting evidence
 - `PITCH.md` exists with the 45-second pitch
 - `SUBMISSION.md` exists with the text to paste into the Ralphthon submission form
 
