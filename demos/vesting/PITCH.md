@@ -1,7 +1,7 @@
-I built Agent Pod because AI coding tools still often behave like one contractor. But real product work needs roles: someone clarifies the spec, someone builds, someone audits, and someone packages the story.
+I built Token Launch Lab because token launches are irreversible. One bad vesting schedule, one missed exploit vector, one weak narrative, or one regulatory blind spot can damage a launch in public.
 
-Agent Pod is a delegation harness, not a chatbot. It uses markdown files as the wire format between PM, Builder, Auditor, and Demo agents, so every decision is inspectable, replayable, and easy for a human founder to review.
+Token Launch Lab is an adversarial agent harness, not another friendly chatbot. It coordinates agents that try to break a launch from different angles: unlock dumps, contract risk, compliance risk, and crypto Twitter narrative attacks.
 
-For today's demo, the pod builds a Token Vesting artifact for crypto founders. From one brief, it produces acceptance criteria, runnable code, tests, a Solidity scaffold, an audit report, and submission copy.
+For today's demo, it red-teams a sample TGE spec and produces a launch failure report: ranked risks, evidence, generated vesting logic, tests, a Solidity scaffold, audit notes, and remediation copy.
 
-My thesis is simple: the next solo founder will not do every job manually. She will define the finish line, delegate to agents, review the evidence, and make the final call.
+My thesis is simple: the future crypto founder does not need more AI that agrees with her. She needs an AI that tries to kill the launch first, so reality does not get the chance.

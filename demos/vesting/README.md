@@ -1,6 +1,8 @@
-# Agent Pod Harness
+# Token Launch Lab
 
-Agent Pod is a mini AI product team for solo founders. It turns one founder brief into PM output, builder artifacts, audit review, and demo packaging.
+Token Launch Lab is an adversarial AI harness for crypto founders preparing a token launch.
+
+Instead of only helping founders build launch materials, it stress-tests a launch before mainnet. The harness coordinates specialized agents across vesting risk, contract risk, compliance risk, and narrative risk, then produces an inspectable failure trail.
 
 ## 60-Second Quickstart
 
@@ -15,16 +17,17 @@ node --test artifacts/vesting-calculator.test.mjs
 
 ```
 pod run "spec"
-  -> PM-Agent writes .pod/user-stories.md, acceptance-criteria.md, test-plan.md
-  -> Builder-Agent writes artifacts/
-  -> Auditor-Agent writes .pod/audit-report.md
-  -> Demo-Agent writes README.md, PITCH.md, SUBMISSION.md
+  -> Dump Scenario Agent checks vesting and unlock risk
+  -> Exploit Agent reviews contract and DeFi attack patterns
+  -> Compliance Agent surfaces SEC / MAS / Howey-style risk
+  -> CT Adversary stress-tests the public narrative
+  -> Harness writes .pod/decisions.log, audit report, artifacts, pitch, and submission copy
   -> Orchestrator logs every dispatch in .pod/decisions.log
 ```
 
 ## Canned Demo
 
-The cached vesting demo is stored in `demos/vesting/` after `npm run demo`.
+The cached token launch pre-mortem demo is stored in `demos/vesting/` after `npm run demo`.
 
 ## Pitch
 

@@ -2,11 +2,11 @@
 
 ## Project Name
 
-Agent Pod
+Token Launch Lab
 
 ## One-Liner
 
-A delegation harness that turns one founder idea into PM specs, builder artifacts, audit review, and demo packaging.
+An AI red team that stress-tests your token launch before mainnet does.
 
 ## Track
 
@@ -14,8 +14,8 @@ Harness/Skills
 
 ## Description
 
-Agent Pod is a mini AI product team for solo founders. It is not a chatbot; it is an inspectable delegation harness. A founder provides one product brief, then the pod runs PM, Builder, Auditor, and Demo agents through a shared markdown protocol. The PM agent creates user stories, acceptance criteria, and a test plan. The Builder agent creates runnable artifacts. The Auditor agent runs checks and writes an audit report. The Demo agent packages README, pitch, and submission copy. For today's demo, Agent Pod builds Token Vesting Studio, a crypto founder artifact with vesting logic, tests, a Solidity scaffold, and audit notes. The goal is to show how Codex-style agent workflows can turn solo builders into tiny, reviewable product teams.
+Token Launch Lab is an adversarial AI harness for crypto founders preparing a token launch. Token launches are high-pressure and hard to reverse. One bad vesting schedule, one missed exploit vector, one weak investor narrative, or one regulatory blind spot can damage the launch in public. Instead of only helping founders build launch materials, Token Launch Lab stress-tests them before mainnet. Four specialized agents review the launch from different failure angles: a Dump Scenario Agent, an Exploit Agent, a Compliance Agent, and a CT Adversary. The agents communicate through inspectable markdown files, so every failure mode is replayable and auditable. For today's demo, Token Launch Lab runs a red-team review on a sample TGE spec and outputs ranked failure modes, severity, evidence, and remediation.
 
 ## Who I Want to Meet
 
-Builders, founders, and OpenAI/Codex people interested in agent orchestration, developer workflows, and AI-native startup tooling.
+Crypto founders, security reviewers, token launch teams, and OpenAI/Codex people interested in adversarial agent harnesses.
