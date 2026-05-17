@@ -38,6 +38,8 @@ const schemaChecks = [
 let state = {
   data: null,
   running: false,
+  runStarted: false,
+  lastRunAt: null,
   error: null,
 };
 
@@ -77,13 +79,14 @@ async function loadReport() {
 }
 
 async function runHarness() {
-  state = { ...state, running: true, error: null };
+  state = { ...state, running: true, runStarted: true, error: null };
   render();
   try {
     state = {
       ...state,
       data: await fetchJson("/api/run", { method: "POST" }),
       running: false,
+      lastRunAt: new Date().toLocaleTimeString(),
       error: null,
     };
   } catch (error) {
@@ -93,7 +96,13 @@ async function runHarness() {
 }
 
 function renderTopbar(data) {
-  const status = data?.judge?.revisionReports === 0 ? "verified sealed" : "needs revision";
+  const status = state.running
+    ? "running judge..."
+    : state.lastRunAt
+      ? `verified at ${state.lastRunAt}`
+      : data?.judge?.revisionReports === 0
+        ? "ready: click run"
+        : "needs revision";
   return `
     <header class="topbar">
       <div class="brand"><span class="brand-mark"></span><span>Token Launch Lab</span></div>
@@ -101,7 +110,7 @@ function renderTopbar(data) {
       <div class="actions">
         <span class="command-pill">node src/orchestrator.js</span>
         <span class="status-pill">${escapeHtml(status)}</span>
-        <button class="run-button" type="button" id="runHarness">${state.running ? "Running..." : "Run Judge Verification"}</button>
+        <button class="run-button" type="button" id="runHarness" ${state.running ? "disabled" : ""}>${state.running ? "Running..." : "Run Judge Verification"}</button>
       </div>
     </header>
   `;
@@ -201,20 +210,30 @@ function renderFindings(data) {
 }
 
 function renderTrace(data) {
-  const output =
-    data.runOutput?.stdout ||
-    `Token Launch Lab: Codex Harness Verification
+  let output = `Waiting for live verification.
 
-PASS Dump Risk Agent (outputs/dump-risk.md)
-PASS Protocol Risk Agent (outputs/protocol-risk.md)
-PASS Regulatory Risk Agent (outputs/regulatory-risk.md)
-PASS CT Adversary Agent (outputs/ct-adversary.md)
+Click "Run Judge Verification" in the top right.
 
-Final Kill Report
-- Launch readiness score: ${data.launchReadiness.score}/100
-- Recommendation: ${data.launchReadiness.recommendation}
-- Valid findings: ${data.judge.validFindings}
-- Reports needing revision: ${data.judge.revisionReports}`;
+The browser will call:
+POST /api/run
+
+The local server will execute:
+node src/orchestrator.js`;
+
+  if (state.running) {
+    output = `Running live verification now...
+
+POST /api/run
+-> node src/orchestrator.js
+
+Please wait for the PASS lines.`;
+  }
+
+  if (data.runOutput?.stdout) {
+    output = `${data.runOutput.stdout.trim()}
+
+UI-triggered run completed at ${state.lastRunAt ?? "just now"}.`;
+  }
 
   return `
     <section class="section">
@@ -235,6 +254,22 @@ Final Kill Report
       </div>
     </section>
   `;
+}
+
+function renderBanner() {
+  if (state.running) {
+    return `<div class="banner is-running">Running Judge Verification: POST /api/run -> node src/orchestrator.js</div>`;
+  }
+
+  if (state.error) {
+    return `<div class="banner is-error">Error: ${escapeHtml(state.error)}</div>`;
+  }
+
+  if (state.lastRunAt) {
+    return `<div class="banner is-ok">Live verification completed at ${escapeHtml(state.lastRunAt)}. The terminal panel now shows real orchestrator output.</div>`;
+  }
+
+  return `<div class="banner">Backend connected. Click Run Judge Verification to trigger the real local verifier.</div>`;
 }
 
 function renderGate(data) {
@@ -321,6 +356,7 @@ function render() {
   root.innerHTML = `
     <main class="shell">
       ${renderTopbar(state.data)}
+      ${renderBanner()}
       ${renderHero(state.data)}
       ${renderAgents(state.data)}
       ${renderFindings(state.data)}
