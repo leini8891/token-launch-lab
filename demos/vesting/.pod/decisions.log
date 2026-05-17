@@ -1,0 +1,13 @@
+
+2026-05-17T04:14:21.520Z Orchestrator init ok "build a token vesting calculator for crypto founders with cliff and linear vesting"
+2026-05-17T04:14:21.521Z Orchestrator run-start ok
+2026-05-17T04:14:21.522Z PM-Agent start ok
+2026-05-17T04:14:21.523Z PM-Agent write-spec-files ok 6 acceptance criteria
+2026-05-17T04:14:21.523Z Builder-Agent start ok
+2026-05-17T04:14:21.524Z Builder-Agent write ok artifacts/vesting-calculator.mjs
+2026-05-17T04:14:21.524Z Builder-Agent write ok artifacts/vesting-calculator.test.mjs
+2026-05-17T04:14:21.525Z Builder-Agent write ok artifacts/TokenVestingScaffold.sol
+2026-05-17T04:14:21.525Z Auditor-Agent start ok
+2026-05-17T04:14:21.765Z Auditor-Agent test-artifact ok
+2026-05-17T04:14:21.766Z Demo-Agent start ok
+2026-05-17T04:14:21.766Z Demo-Agent write-demo-package ok README PITCH SUBMISSION

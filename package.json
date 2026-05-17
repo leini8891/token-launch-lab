@@ -1,0 +1,24 @@
+{
+  "name": "token-launch-lab",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "pod": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "pod": "node ./dist/index.js",
+    "demo": "node ./dist/index.js run \"build a token vesting calculator for crypto founders with cliff and linear vesting\"",
+    "test:artifact": "node --test artifacts/vesting-calculator.test.mjs"
+  },
+  "dependencies": {
+    "chalk": "^5.6.2",
+    "commander": "^14.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "typescript": "^5.9.3"
+  }
+}
