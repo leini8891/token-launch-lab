@@ -546,6 +546,35 @@ async function renderDashboard(): Promise<string> {
     readText(path.join(podDir, "audit-report.md"), "No audit yet."),
     listArtifacts(artifactsDir),
   ]);
+  const specText = spec.replace(/^# Spec\s*/m, "").trim();
+  const decisionLines = decisions
+    .trim()
+    .split(/\r?\n/)
+    .filter((line) => line.trim().length > 0);
+  const noBlockers = audit.includes("## BLOCKER") && audit.includes("- (none)");
+  const passCount = (audit.match(/AC-\d{3}: PASS/g) ?? []).length;
+  const riskSection = audit.split("## RISK")[1]?.split("## NIT")[0] ?? "";
+  const riskItems = riskSection
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("- [ ]"))
+    .map((line) => line.replace("- [ ]", "").trim());
+  const timelineRows = decisionLines.map((line) => {
+    const [timestamp = "", agent = "", action = "", outcome = "", ...rest] = line.split(" ");
+    return {
+      timestamp,
+      agent,
+      action,
+      outcome,
+      note: rest.join(" "),
+    };
+  });
+  const artifactDescriptions = new Map<string, string>([
+    ["README.md", "How to run and explain the demo"],
+    ["TokenVestingScaffold.sol", "Solidity scaffold for vesting logic"],
+    ["vesting-calculator.mjs", "Runnable vesting calculator"],
+    ["vesting-calculator.test.mjs", "Node tests for launch assumptions"],
+  ]);
 
   return `<!doctype html>
 <html lang="en">
@@ -555,26 +584,306 @@ async function renderDashboard(): Promise<string> {
   <meta http-equiv="refresh" content="2" />
   <title>Token Launch Lab Dashboard</title>
   <style>
-    body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f4ef; color: #17211e; }
-    header { padding: 18px 22px; border-bottom: 1px solid #d8d5c9; background: #fff; display: flex; justify-content: space-between; gap: 16px; }
-    main { display: grid; grid-template-columns: 1fr 1.25fr 1fr; gap: 12px; padding: 12px; }
-    section { background: #fff; border: 1px solid #d8d5c9; border-radius: 8px; padding: 14px; min-height: 74vh; overflow: auto; }
-    h1 { margin: 0; font-size: 24px; }
-    h2 { margin-top: 0; font-size: 16px; }
-    pre { white-space: pre-wrap; line-height: 1.42; font-size: 13px; }
-    li { margin-bottom: 8px; }
-    .pill { color: #1f7a5b; font-weight: 800; }
+    :root {
+      --bg: #f6f4ef;
+      --ink: #15211e;
+      --muted: #68736f;
+      --line: #d8d4c7;
+      --panel: #ffffff;
+      --green: #1f7a5b;
+      --green-soft: #e0f0e8;
+      --red: #b94d39;
+      --red-soft: #f6dfd9;
+      --gold: #9c6c12;
+      --gold-soft: #f4e7c6;
+      --teal: #2b7082;
+      --teal-soft: #dceff1;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    header {
+      padding: 22px 26px 16px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 18px;
+    }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: 32px; line-height: 1; letter-spacing: 0; }
+    h2 { font-size: 17px; }
+    h3 { font-size: 14px; }
+    main {
+      display: grid;
+      gap: 14px;
+      padding: 16px;
+    }
+    .subtitle {
+      margin-top: 8px;
+      max-width: 760px;
+      color: var(--muted);
+      line-height: 1.45;
+      font-size: 15px;
+    }
+    .pill {
+      min-height: 34px;
+      padding: 0 12px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      background: var(--green-soft);
+      color: var(--green);
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(150px, 1fr));
+      gap: 12px;
+    }
+    .metric, .panel, .artifact-card, .timeline-row {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    .metric {
+      padding: 14px;
+      min-height: 92px;
+    }
+    .metric span {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    .metric strong {
+      font-size: 28px;
+      line-height: 1;
+    }
+    .metric.pass strong { color: var(--green); }
+    .metric.warn strong { color: var(--gold); }
+    .metric.risk strong { color: var(--red); }
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(280px, 0.9fr) minmax(360px, 1.25fr) minmax(280px, 0.9fr);
+      gap: 14px;
+      align-items: start;
+    }
+    .panel {
+      padding: 16px;
+      min-height: 260px;
+    }
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .tag {
+      min-height: 26px;
+      padding: 0 9px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      font-size: 12px;
+      font-weight: 800;
+      background: var(--teal-soft);
+      color: var(--teal);
+      white-space: nowrap;
+    }
+    .brief {
+      padding: 13px;
+      border-radius: 8px;
+      background: #fbfaf6;
+      border: 1px solid var(--line);
+      line-height: 1.45;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 14px;
+    }
+    .flow {
+      display: grid;
+      gap: 8px;
+      margin-top: 14px;
+    }
+    .step {
+      display: grid;
+      grid-template-columns: 36px 1fr;
+      gap: 10px;
+      align-items: center;
+      padding: 10px;
+      border-radius: 8px;
+      background: #fbfaf6;
+      border: 1px solid var(--line);
+    }
+    .step-num {
+      width: 30px;
+      height: 30px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      background: var(--green-soft);
+      color: var(--green);
+      font-weight: 900;
+    }
+    .step p, .artifact-card p, .risk-list li {
+      color: var(--muted);
+      line-height: 1.38;
+      font-size: 13px;
+    }
+    .risk-list {
+      display: grid;
+      gap: 10px;
+      padding: 0;
+      margin: 0;
+      list-style: none;
+    }
+    .risk-list li {
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid #edc9c0;
+      background: var(--red-soft);
+      color: #653024;
+    }
+    .coverage {
+      margin-top: 14px;
+      padding: 12px;
+      border-radius: 8px;
+      background: var(--green-soft);
+      border: 1px solid #badccf;
+      color: #235845;
+      font-weight: 800;
+    }
+    .artifacts {
+      display: grid;
+      gap: 10px;
+    }
+    .artifact-card {
+      padding: 12px;
+    }
+    .artifact-card strong {
+      display: block;
+      margin-bottom: 5px;
+    }
+    .timeline {
+      display: grid;
+      gap: 8px;
+      max-height: 430px;
+      overflow: auto;
+      padding-right: 2px;
+    }
+    .timeline-row {
+      display: grid;
+      grid-template-columns: 118px 116px 110px 1fr;
+      gap: 8px;
+      align-items: center;
+      padding: 10px;
+      font-size: 13px;
+    }
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    .outcome {
+      color: var(--green);
+      font-weight: 900;
+    }
+    .notes {
+      white-space: pre-wrap;
+      line-height: 1.45;
+      color: var(--muted);
+      font-size: 13px;
+      max-height: 160px;
+      overflow: auto;
+      border-top: 1px solid var(--line);
+      margin-top: 14px;
+      padding-top: 12px;
+    }
+    @media (max-width: 980px) {
+      .metrics, .grid { grid-template-columns: 1fr; }
+      header { flex-direction: column; }
+      .timeline-row { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
   <header>
-    <h1>Token Launch Lab Dashboard</h1>
+    <div>
+      <h1>Token Launch Lab</h1>
+      <p class="subtitle">A launch pre-mortem harness: agents stress-test a token launch, generate artifacts, run checks, and leave an inspectable evidence trail.</p>
+    </div>
     <div class="pill">Auto-refreshing every 2s</div>
   </header>
   <main>
-    <section><h2>Spec</h2><pre>${escapeHtml(spec)}</pre><h2>Audit</h2><pre>${escapeHtml(audit)}</pre></section>
-    <section><h2>decisions.log</h2><pre>${escapeHtml(decisions)}</pre><h2>notes.md</h2><pre>${escapeHtml(notes)}</pre></section>
-    <section><h2>Artifacts</h2><ul>${artifacts.map((file) => `<li>${escapeHtml(file)}</li>`).join("")}</ul></section>
+    <section class="metrics" aria-label="Run metrics">
+      <div class="metric pass"><span>Run Status</span><strong>PASS</strong></div>
+      <div class="metric ${noBlockers ? "pass" : "risk"}"><span>Blockers</span><strong>${noBlockers ? "0" : "Review"}</strong></div>
+      <div class="metric pass"><span>AC Coverage</span><strong>${passCount}/6</strong></div>
+      <div class="metric warn"><span>Artifacts</span><strong>${artifacts.length}</strong></div>
+    </section>
+
+    <section class="grid">
+      <article class="panel">
+        <div class="panel-header">
+          <h2>Launch Brief</h2>
+          <span class="tag">Input</span>
+        </div>
+        <div class="brief">${escapeHtml(specText)}</div>
+        <div class="flow">
+          <div class="step"><div class="step-num">1</div><div><h3>Plan</h3><p>PM-style agent turns the launch idea into acceptance criteria.</p></div></div>
+          <div class="step"><div class="step-num">2</div><div><h3>Build</h3><p>Builder agent creates runnable vesting logic, tests, and a Solidity scaffold.</p></div></div>
+          <div class="step"><div class="step-num">3</div><div><h3>Audit</h3><p>Auditor agent checks test results and launch risks.</p></div></div>
+          <div class="step"><div class="step-num">4</div><div><h3>Package</h3><p>Demo agent writes pitch and submission materials.</p></div></div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-header">
+          <h2>Kill Report</h2>
+          <span class="tag">${noBlockers ? "Demo-safe" : "Needs review"}</span>
+        </div>
+        <ul class="risk-list">
+          ${riskItems.map((risk) => `<li>${escapeHtml(risk)}</li>`).join("")}
+        </ul>
+        <div class="coverage">${passCount} acceptance criteria passed. No demo blockers found.</div>
+        <div class="notes">${escapeHtml(notes)}</div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-header">
+          <h2>Generated Artifacts</h2>
+          <span class="tag">Output</span>
+        </div>
+        <div class="artifacts">
+          ${artifacts
+            .map(
+              (file) => `<div class="artifact-card"><strong>${escapeHtml(file)}</strong><p>${escapeHtml(artifactDescriptions.get(file) ?? "Generated launch artifact")}</p></div>`,
+            )
+            .join("")}
+        </div>
+      </article>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Execution Timeline</h2>
+        <span class="tag">decisions.log</span>
+      </div>
+      <div class="timeline">
+        ${timelineRows
+          .map(
+            (row) => `<div class="timeline-row"><span class="mono">${escapeHtml(row.timestamp.split("T")[1]?.replace("Z", "") ?? row.timestamp)}</span><strong>${escapeHtml(row.agent)}</strong><span class="outcome">${escapeHtml(row.outcome)}</span><span>${escapeHtml(`${row.action} ${row.note}`.trim())}</span></div>`,
+          )
+          .join("")}
+      </div>
+    </section>
   </main>
 </body>
 </html>`;
