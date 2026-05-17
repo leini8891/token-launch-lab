@@ -11,6 +11,8 @@
     "typecheck": "tsc --noEmit",
     "pod": "node ./dist/index.js",
     "redteam": "node src/orchestrator.js",
+    "ui": "node src/demo-server.js",
+    "demo:ui": "node src/demo-server.js",
     "demo": "node ./dist/index.js run \"build a token vesting calculator for crypto founders with cliff and linear vesting\"",
     "test:artifact": "node --test artifacts/vesting-calculator.test.mjs"
   },

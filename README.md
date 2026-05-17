@@ -18,6 +18,7 @@ Instead of only helping founders build launch materials, it stress-tests a launc
 ```bash
 npm install
 node src/orchestrator.js
+npm run ui
 ```
 
 This reads the Codex-authored agent reports in `outputs/`, verifies them, prints pass/revision status, computes launch readiness, and writes:
@@ -25,6 +26,12 @@ This reads the Codex-authored agent reports in `outputs/`, verifies them, prints
 - `outputs/kill-report.md`
 - `outputs/remediation.md`
 - `outputs/judge-evaluation.md`
+
+The demo UI runs at:
+
+```text
+http://127.0.0.1:3000
+```
 
 ## Architecture
 
@@ -49,12 +56,11 @@ Codex /goal
 
 ## Live Demo Flow
 
-1. Show `codex-goal.md`.
-2. Show `AGENTS.md`.
-3. Show `tge-spec.md`.
-4. Show the four agent files under `outputs/`.
-5. Run `node src/orchestrator.js`.
-6. Open `outputs/kill-report.md`.
+1. Open `http://127.0.0.1:3000`.
+2. Show the HarborUSD Kill Report and launch readiness score.
+3. Click **Run Judge Verification** to run `node src/orchestrator.js` from the UI.
+4. Show `codex-goal.md`, `AGENTS.md`, and `tge-spec.md` inside the UI evidence panels.
+5. Open `outputs/kill-report.md` if judges ask to inspect the raw markdown.
 
 ## Safety Boundaries
 
