@@ -80,3 +80,7 @@ node ./dist/index.js dashboard -p 3000
 ## Pitch
 
 Read `PITCH.md`.
+
+## Contributors
+
+- ElenaX <leini8891@qq.com>
