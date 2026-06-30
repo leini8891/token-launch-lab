@@ -64,7 +64,13 @@ function normalize(value) {
 }
 
 function stripQuotes(value) {
-  return value.trim().replace(/^["'`]+|["'`]+$/g, "");
+  const trimmed = value.trim();
+  const first = trimmed.at(0);
+  const last = trimmed.at(-1);
+  if (trimmed.length >= 2 && first === last && ["\"", "'", "`"].includes(first)) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
 }
 
 async function readText(filePath) {

@@ -2,37 +2,87 @@ const agentRoles = [
   {
     name: "Dump Risk Agent",
     file: "outputs/dump-risk.md",
-    role: "Reviews vesting, unlock pressure, insider allocation, liquidity optics, and CEX-listing timing.",
+    owner: "Markets",
+    question: "Will unlocks or MM inventory become the launch story?",
+    focus: "Unlock pressure, insider supply, market-maker optics, and listing timing.",
   },
   {
     name: "Protocol Risk Agent",
     file: "outputs/protocol-risk.md",
-    role: "Reviews defensive protocol readiness, audit status, pause policy, multisig, and incident response assumptions.",
+    owner: "Protocol",
+    question: "Can the team defend the system when launch pressure hits?",
+    focus: "Audit timing, pause authority, multisig operations, and launch readiness.",
   },
   {
     name: "Regulatory Risk Agent",
     file: "outputs/regulatory-risk.md",
-    role: "Flags distribution, jurisdiction, public sale, and incentive-campaign risk areas for qualified review.",
+    owner: "Counsel",
+    question: "Are sale, eligibility, and campaign mechanics ready for review?",
+    focus: "Distribution mechanics, sale design, jurisdiction exposure, and communications.",
   },
   {
     name: "CT Adversary Agent",
     file: "outputs/ct-adversary.md",
-    role: "Simulates the harshest credible public narrative critique before the market writes it.",
+    owner: "Narrative",
+    question: "What will the market dunk on before users see the product?",
+    focus: "The harshest credible public-market narrative before the market writes it.",
   },
   {
     name: "Judge Agent",
     file: "src/orchestrator.js",
-    role: "Verifies schema, evidence, severity, safety boundaries, termination, and revision requirements.",
+    owner: "Gatekeeper",
+    question: "Did every claim pass schema, evidence, and safety checks?",
+    focus: "Schema, evidence, severity, safety boundaries, and termination criteria.",
   },
 ];
 
 const schemaChecks = [
-  ["specific risk", "required"],
-  ["severity", "low / medium / high / critical"],
-  ["confidence", "low / medium / high"],
-  ["evidence", "exact quote from tge-spec.md"],
-  ["remediation", "defensive fix"],
-  ["safety", "no exploit instructions / no legal advice"],
+  ["Specific risk", "Required"],
+  ["Severity", "low / medium / high / critical"],
+  ["Confidence", "low / medium / high"],
+  ["Evidence", "Exact quote from tge-spec.md"],
+  ["Remediation", "Defensive fix"],
+  ["Safety", "No exploit instructions or legal advice"],
+];
+
+const views = [
+  ["findings", "Blockers"],
+  ["agents", "War Room"],
+  ["evidence", "Evidence"],
+  ["run", "Judge"],
+];
+
+const launchStages = [
+  {
+    label: "Public sale",
+    match: ["public sale", "fundraising", "airdrop"],
+    fallback: "REG-001",
+    owner: "Counsel",
+  },
+  {
+    label: "CEX track",
+    match: ["cex", "listing"],
+    fallback: "DUMP-001",
+    owner: "Markets",
+  },
+  {
+    label: "Mainnet",
+    match: ["mainnet", "deployment"],
+    fallback: "PROTO-001",
+    owner: "Protocol",
+  },
+  {
+    label: "Campaigns",
+    match: ["campaign"],
+    fallback: "CT-002",
+    owner: "Growth",
+  },
+  {
+    label: "Narrative",
+    match: ["narrative", "materials"],
+    fallback: "CT-001",
+    owner: "Founder",
+  },
 ];
 
 let state = {
@@ -41,6 +91,9 @@ let state = {
   runStarted: false,
   lastRunAt: null,
   error: null,
+  activeView: "findings",
+  activeDoc: "tgeSpec",
+  selectedFindingId: null,
 };
 
 function escapeHtml(value = "") {
@@ -52,12 +105,98 @@ function escapeHtml(value = "") {
     .replaceAll("'", "&#039;");
 }
 
-function severityClass(value) {
+function severityClass(value = "") {
   return ["critical", "high", "medium", "low"].includes(value) ? value : "low";
 }
 
-function shortAgent(name) {
-  return name.replace(" Risk Agent", "").replace(" Adversary Agent", "").replace("Regulatory", "Reg").replace("Protocol", "Proto");
+function shortAgent(name = "") {
+  return name
+    .replace(" Risk Agent", "")
+    .replace(" Adversary Agent", "")
+    .replace("Regulatory", "Reg")
+    .replace("Protocol", "Proto");
+}
+
+function percent(score = 0) {
+  return Math.max(0, Math.min(100, Number(score) || 0));
+}
+
+function formatStatus(data) {
+  if (state.running) return "Judge running";
+  if (state.lastRunAt) return `Verified ${state.lastRunAt}`;
+  if (data?.judge?.revisionReports > 0) return "Needs revision";
+  if (data?.launchReadiness?.recommendation) return `${data.launchReadiness.recommendation} verified`;
+  return "Dossier loaded";
+}
+
+function ensureSelection(data) {
+  if (!data?.findings?.length) return;
+  const exists = data.findings.some((finding) => finding.id === state.selectedFindingId);
+  if (!exists) {
+    state.selectedFindingId = data.findings[0].id;
+  }
+}
+
+function selectedFinding(data) {
+  ensureSelection(data);
+  return data.findings.find((finding) => finding.id === state.selectedFindingId) ?? data.findings[0];
+}
+
+function severityCounts(findings = []) {
+  return findings.reduce(
+    (counts, finding) => {
+      const key = severityClass(finding.severity);
+      counts[key] += 1;
+      return counts;
+    },
+    { critical: 0, high: 0, medium: 0, low: 0 },
+  );
+}
+
+function priorityLevel(priority = "") {
+  return priority.match(/^P\d/i)?.[0]?.toUpperCase() ?? "P2";
+}
+
+function p0Findings(data) {
+  return data.findings.filter((finding) => priorityLevel(finding.priority) === "P0");
+}
+
+function p1Findings(data) {
+  return data.findings.filter((finding) => priorityLevel(finding.priority) === "P1");
+}
+
+function stageFinding(data, stage) {
+  return (
+    data.findings.find((finding) =>
+      stage.match.some((word) => `${finding.priority} ${finding.risk} ${finding.remediation}`.toLowerCase().includes(word)),
+    ) ?? data.findings.find((finding) => finding.id === stage.fallback)
+  );
+}
+
+function readinessCopy(readiness) {
+  if (readiness.recommendation === "NO-GO") return "Do not announce until P0 gates clear";
+  if (readiness.recommendation === "CONDITIONAL") return "Launch only with explicit mitigations";
+  return "Ready with monitoring and evidence pack";
+}
+
+function shortText(value = "", max = 84) {
+  if (value.length <= max) return value;
+  return `${value.slice(0, max - 1).trim()}...`;
+}
+
+function docSources(data) {
+  return [
+    ["tgeSpec", "TGE Spec", "tge-spec.md", data.docs.tgeSpec],
+    ["dumpRisk", "Dump Risk", "outputs/dump-risk.md", data.docs.dumpRisk],
+    ["protocolRisk", "Protocol Risk", "outputs/protocol-risk.md", data.docs.protocolRisk],
+    ["regulatoryRisk", "Regulatory Risk", "outputs/regulatory-risk.md", data.docs.regulatoryRisk],
+    ["ctAdversary", "CT Adversary", "outputs/ct-adversary.md", data.docs.ctAdversary],
+    ["killReport", "Kill Report", "outputs/kill-report.md", data.docs.killReport],
+    ["remediation", "Remediation", "outputs/remediation.md", data.docs.remediation],
+    ["judgeEvaluation", "Judge Eval", "outputs/judge-evaluation.md", data.docs.judgeEvaluation],
+    ["agents", "Agents", "AGENTS.md", data.docs.agents],
+    ["codexGoal", "Codex Goal", "codex-goal.md", data.docs.codexGoal],
+  ];
 }
 
 async function fetchJson(url, options) {
@@ -71,7 +210,9 @@ async function fetchJson(url, options) {
 
 async function loadReport() {
   try {
-    state = { ...state, data: await fetchJson("/api/report"), error: null };
+    const data = await fetchJson("/api/report");
+    state = { ...state, data, error: null };
+    ensureSelection(data);
   } catch (error) {
     state = { ...state, error: error.message };
   }
@@ -79,16 +220,18 @@ async function loadReport() {
 }
 
 async function runHarness() {
-  state = { ...state, running: true, runStarted: true, error: null };
+  state = { ...state, running: true, runStarted: true, error: null, activeView: "run" };
   render();
   try {
+    const data = await fetchJson("/api/run", { method: "POST" });
     state = {
       ...state,
-      data: await fetchJson("/api/run", { method: "POST" }),
+      data,
       running: false,
-      lastRunAt: new Date().toLocaleTimeString(),
+      lastRunAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       error: null,
     };
+    ensureSelection(data);
   } catch (error) {
     state = { ...state, running: false, error: error.message };
   }
@@ -96,169 +239,35 @@ async function runHarness() {
 }
 
 function renderTopbar(data) {
-  const status = state.running
-    ? "running judge..."
-    : state.lastRunAt
-      ? `verified at ${state.lastRunAt}`
-      : data?.judge?.revisionReports === 0
-        ? "ready: click run"
-        : "needs revision";
   return `
-    <header class="topbar">
-      <div class="brand"><span class="brand-mark"></span><span>Token Launch Lab</span></div>
-      <div class="topbar-meta">Codex /goal -> markdown memory -> judge gate -> kill report</div>
-      <div class="actions">
-        <span class="command-pill">node src/orchestrator.js</span>
-        <span class="status-pill">${escapeHtml(status)}</span>
-        <button class="run-button" type="button" id="runHarness" ${state.running ? "disabled" : ""}>${state.running ? "Running..." : "Run Judge Verification"}</button>
+    <header class="command-bar">
+      <div class="brand-block">
+        <span class="brand-sigil">TL</span>
+        <span>
+          <strong>Token Launch Lab</strong>
+          <small>${escapeHtml(data.project.track)}</small>
+        </span>
+      </div>
+      <div class="pipeline">
+        <span>Spec intake</span>
+        <span>4 adversaries</span>
+        <span>Judge gate</span>
+        <span>Founder brief</span>
+      </div>
+      <div class="command-actions">
+        <span class="status-chip ${state.running ? "is-running" : ""}">${escapeHtml(formatStatus(data))}</span>
+        <button class="run-button" type="button" id="runHarness" ${state.running ? "disabled" : ""} title="Run the local judge verifier">
+          <span aria-hidden="true">${state.running ? "..." : "RUN"}</span>
+          ${state.running ? "Running" : "Run Judge"}
+        </button>
       </div>
     </header>
   `;
 }
 
-function renderHero(data) {
-  const readiness = data.launchReadiness;
-  return `
-    <section class="hero">
-      <div>
-        <div class="eyebrow">${escapeHtml(data.project.track)}</div>
-        <h1>HarborUSD Kill Report</h1>
-        <p class="lede">${escapeHtml(data.project.tagline)}</p>
-        <div class="meta-grid">
-          <div class="meta-cell"><span class="label">Subject</span><span class="value">${escapeHtml(data.project.subject)}</span></div>
-          <div class="meta-cell"><span class="label">Agents</span><span class="value">4 adversaries + judge</span></div>
-          <div class="meta-cell"><span class="label">Memory</span><span class="value">outputs/*.md</span></div>
-          <div class="meta-cell"><span class="label">Safety</span><span class="value">Defensive only</span></div>
-        </div>
-      </div>
-      <aside class="score-panel">
-        <div class="stamp">${escapeHtml(readiness.recommendation).replace("-", "<br />")}</div>
-        <div class="score-label"><span>Launch readiness</span><span>verified</span></div>
-        <div class="score-number">${readiness.score}<span>/100</span></div>
-        <div class="verdict">${escapeHtml(readiness.recommendation)}</div>
-        <div class="score-bars">
-          <div class="score-stat"><strong>${readiness.critical}</strong><span>critical</span></div>
-          <div class="score-stat"><strong>${readiness.high}</strong><span>high</span></div>
-          <div class="score-stat"><strong>${data.judge.validFindings}</strong><span>valid findings</span></div>
-          <div class="score-stat"><strong>${readiness.revisions}</strong><span>revisions</span></div>
-        </div>
-      </aside>
-    </section>
-  `;
-}
-
-function renderAgents(data) {
-  const reportStatus = new Map(data.judge.reports.map((report) => [report.file, report.status]));
-  return `
-    <section class="section">
-      <div class="section-head">
-        <span class="section-kicker">I</span>
-        <h2 class="section-title">Adversarial Agents</h2>
-        <span class="section-note">independent reports</span>
-      </div>
-      <div class="agent-grid">
-        ${agentRoles
-          .map((agent, index) => {
-            const status = reportStatus.get(agent.file) || "PASS";
-            return `
-              <article class="agent">
-                <div class="num">${String(index + 1).padStart(2, "0")}</div>
-                <h3>${escapeHtml(agent.name)}</h3>
-                <p>${escapeHtml(agent.role)}</p>
-                <span class="pass">${escapeHtml(status)} · ${escapeHtml(agent.file)}</span>
-              </article>
-            `;
-          })
-          .join("")}
-      </div>
-    </section>
-  `;
-}
-
-function renderFindings(data) {
-  return `
-    <section class="section">
-      <div class="section-head">
-        <span class="section-kicker">II</span>
-        <h2 class="section-title">Ranked Failure Modes</h2>
-        <span class="section-note">${data.findings.length} surfaced</span>
-      </div>
-      <div class="finding-grid">
-        ${data.findings
-          .map(
-            (finding) => `
-              <article class="finding">
-                <div class="finding-top">
-                  <div class="agent-line">${escapeHtml(finding.id)} -> ${escapeHtml(shortAgent(finding.agent))}</div>
-                  <span class="severity ${severityClass(finding.severity)}">${escapeHtml(finding.severity)}</span>
-                </div>
-                <h3>${escapeHtml(finding.risk)}</h3>
-                <blockquote class="evidence">${escapeHtml(finding.evidence)}</blockquote>
-                <dl>
-                  <dt>Confidence</dt><dd>${escapeHtml(finding.confidence)}</dd>
-                  <dt>Why</dt><dd>${escapeHtml(finding.impact)}</dd>
-                  <dt>Priority</dt><dd>${escapeHtml(finding.priority)}</dd>
-                  <dt>Fix</dt><dd>${escapeHtml(finding.remediation)}</dd>
-                </dl>
-              </article>
-            `,
-          )
-          .join("")}
-      </div>
-    </section>
-  `;
-}
-
-function renderTrace(data) {
-  let output = `Waiting for live verification.
-
-Click "Run Judge Verification" in the top right.
-
-The browser will call:
-POST /api/run
-
-The local server will execute:
-node src/orchestrator.js`;
-
-  if (state.running) {
-    output = `Running live verification now...
-
-POST /api/run
--> node src/orchestrator.js
-
-Please wait for the PASS lines.`;
-  }
-
-  if (data.runOutput?.stdout) {
-    output = `${data.runOutput.stdout.trim()}
-
-UI-triggered run completed at ${state.lastRunAt ?? "just now"}.`;
-  }
-
-  return `
-    <section class="section">
-      <div class="section-head">
-        <span class="section-kicker">III</span>
-        <h2 class="section-title">Codex Harness Trace</h2>
-        <span class="section-note">inspectable memory</span>
-      </div>
-      <div class="trace-grid">
-        <div class="terminal">
-          <div class="panel-head"><span>Judge terminal</span><span>src/orchestrator.js</span></div>
-          <pre>${escapeHtml(output)}</pre>
-        </div>
-        <div class="doc-panel">
-          <div class="panel-head"><span>Shared launch spec</span><span>tge-spec.md</span></div>
-          <pre>${escapeHtml(data.excerpts.tgeSpec)}</pre>
-        </div>
-      </div>
-    </section>
-  `;
-}
-
 function renderBanner() {
   if (state.running) {
-    return `<div class="banner is-running">Running Judge Verification: POST /api/run -> node src/orchestrator.js</div>`;
+    return `<div class="banner is-running">POST /api/run is executing node src/orchestrator.js.</div>`;
   }
 
   if (state.error) {
@@ -266,80 +275,346 @@ function renderBanner() {
   }
 
   if (state.lastRunAt) {
-    return `<div class="banner is-ok">Live verification completed at ${escapeHtml(state.lastRunAt)}. The terminal panel now shows real orchestrator output.</div>`;
+    return `<div class="banner is-ok">Verification completed at ${escapeHtml(state.lastRunAt)}. Generated markdown is reflected below.</div>`;
   }
 
-  return `<div class="banner">Backend connected. Click Run Judge Verification to trigger the real local verifier.</div>`;
+  return `<div class="banner">Founder dossier loaded from tge-spec.md, outputs/*.md, and src/orchestrator.js.</div>`;
 }
 
-function renderGate(data) {
+function renderOverview(data) {
+  const readiness = data.launchReadiness;
+  const score = percent(readiness.score);
+  const counts = severityCounts(data.findings);
+  const p0Count = p0Findings(data).length;
+  const facts = data.specFacts;
+  const topConcern = facts.founderConcerns?.[0] ?? "Founder concern not stated";
+
   return `
-    <section class="section">
-      <div class="section-head">
-        <span class="section-kicker">IV</span>
-        <h2 class="section-title">Judge Gate</h2>
-        <span class="section-note">termination criteria</span>
+    <section class="overview">
+      <div class="briefing">
+        <div>
+          <div class="kicker">${escapeHtml(data.project.subject)} / ${escapeHtml(facts.category || "Token launch")}</div>
+          <h1>Know what can kill the TGE before the market does.</h1>
+          <p class="lede">${escapeHtml(data.project.tagline)}</p>
+        </div>
+        <div class="briefing-strip">
+          <span><strong>${escapeHtml(facts.initialFloat || "N/A")}</strong><small>Initial float</small></span>
+          <span><strong>${escapeHtml(shortText(facts.investorUnlock || "N/A", 36))}</strong><small>Investor unlock</small></span>
+          <span><strong>${escapeHtml(shortText(facts.liquidity || "N/A", 36))}</strong><small>TGE liquidity</small></span>
+          <span><strong>${escapeHtml(shortText(topConcern, 38))}</strong><small>Founder worry</small></span>
+        </div>
       </div>
-      <div class="schema-grid">
-        <div class="gate">
-          <h3>Verification Contract</h3>
-          <div class="checks">
-            ${schemaChecks
-              .map(
-                ([label, meta]) => `
-                  <div class="check"><strong>OK</strong><span>${escapeHtml(label)}</span><span>${escapeHtml(meta)}</span></div>
-                `,
-              )
-              .join("")}
+      <aside class="readiness-panel">
+        <div class="panel-label">
+          <span>Founder decision</span>
+          <strong>${escapeHtml(readiness.recommendation)}</strong>
+        </div>
+        <div class="score-row">
+          <div class="score-ring" style="--score: ${score}">
+            <span>${score}</span>
+            <small>/100</small>
+          </div>
+          <div class="score-copy">
+            <strong>${escapeHtml(readinessCopy(readiness))}</strong>
+            <span>${counts.critical} critical, ${counts.high} high, ${p0Count} P0 fixes</span>
           </div>
         </div>
-        <div class="doc-panel">
-          <div class="panel-head"><span>Codex goal</span><span>codex-goal.md</span></div>
-          <pre>${escapeHtml(data.excerpts.codexGoal)}</pre>
+        ${renderLaunchRadar(data)}
+        <div class="risk-bars" aria-label="Severity counts">
+          ${renderRiskBar("critical", counts.critical)}
+          ${renderRiskBar("high", counts.high)}
+          ${renderRiskBar("medium", counts.medium)}
+          ${renderRiskBar("low", counts.low)}
         </div>
-      </div>
+      </aside>
     </section>
   `;
 }
 
-function renderDocs(data) {
+function renderRiskBar(label, count) {
   return `
-    <section class="section">
-      <div class="section-head">
-        <span class="section-kicker">V</span>
-        <h2 class="section-title">Markdown Evidence</h2>
-        <span class="section-note">repo artifacts</span>
-      </div>
-      <div class="full-docs">
-        <div class="mini-doc doc-panel">
-          <div class="panel-head"><span>Agents</span><span>AGENTS.md</span></div>
-          <pre>${escapeHtml(data.excerpts.agents)}</pre>
-        </div>
-        <div class="mini-doc doc-panel">
-          <div class="panel-head"><span>Remediation</span><span>outputs/remediation.md</span></div>
-          <pre>${escapeHtml(data.excerpts.remediation)}</pre>
-        </div>
-        <div class="mini-doc doc-panel">
-          <div class="panel-head"><span>Judge eval</span><span>outputs/judge-evaluation.md</span></div>
-          <pre>${escapeHtml(data.docs.judgeEvaluation)}</pre>
-        </div>
-      </div>
+    <div class="risk-bar ${label}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${count}</strong>
+    </div>
+  `;
+}
+
+function renderLaunchRadar(data) {
+  const counts = severityCounts(data.findings);
+  return `
+    <div class="launch-radar" aria-label="Launch risk radar">
+      <span class="radar-axis is-top">Reg</span>
+      <span class="radar-axis is-right">CT</span>
+      <span class="radar-axis is-bottom">Proto</span>
+      <span class="radar-axis is-left">Dump</span>
+      <span class="radar-pulse critical" style="--x: 50%; --y: 18%">${counts.critical}</span>
+      <span class="radar-pulse high" style="--x: 77%; --y: 48%">${counts.high}</span>
+      <span class="radar-pulse medium" style="--x: 48%; --y: 74%">${counts.medium}</span>
+      <span class="radar-pulse low" style="--x: 23%; --y: 48%">${counts.low}</span>
+    </div>
+  `;
+}
+
+function renderMetrics(data) {
+  const gates = launchStages.map((stage) => {
+    const finding = stageFinding(data, stage);
+    return [
+      stage.label,
+      finding?.id ?? "CLEAR",
+      finding ? `${stage.owner} / ${priorityLevel(finding.priority)}` : "No blocker",
+      finding?.severity ?? "low",
+    ];
+  });
+
+  return `
+    <section class="metric-grid" aria-label="Founder launch gates">
+      ${gates
+        .map(
+          ([label, value, note, severity]) => `
+            <article class="metric ${severityClass(severity)}">
+              <span>${escapeHtml(label)}</span>
+              <strong>${escapeHtml(value)}</strong>
+              <small>${escapeHtml(note)}</small>
+            </article>
+          `,
+        )
+        .join("")}
     </section>
+  `;
+}
+
+function renderTabs() {
+  return `
+    <nav class="view-tabs" aria-label="Workspace views">
+      ${views
+        .map(
+          ([id, label], index) => `
+            <button type="button" class="tab ${state.activeView === id ? "is-active" : ""}" data-view="${id}">
+              <span>${String(index + 1).padStart(2, "0")}</span>
+              ${escapeHtml(label)}
+            </button>
+          `,
+        )
+        .join("")}
+    </nav>
+  `;
+}
+
+function renderWorkspace(data) {
+  const view =
+    state.activeView === "agents"
+      ? renderAgents(data)
+      : state.activeView === "evidence"
+        ? renderEvidence(data)
+        : state.activeView === "run"
+          ? renderRun(data)
+          : renderFindings(data);
+
+  return `
+    <section class="workspace">
+      <div class="workspace-head">
+        <div>
+          <span class="kicker">Founder operating room</span>
+          <h2>${escapeHtml(data.specFacts.projectName || "HarborUSD")} launch blockers</h2>
+        </div>
+        ${renderTabs()}
+      </div>
+      ${view}
+    </section>
+  `;
+}
+
+function renderFindings(data) {
+  const finding = selectedFinding(data);
+  const p0 = p0Findings(data);
+  const p1 = p1Findings(data);
+
+  return `
+    <div class="finding-board">
+      <div class="finding-queue">
+        <div class="queue-head">
+          <span>Launch blocker queue</span>
+          <strong>${data.findings.length} risks</strong>
+        </div>
+        <div class="finding-list">
+          ${data.findings
+            .map(
+              (item) => `
+                <button type="button" class="finding-row ${state.selectedFindingId === item.id ? "is-selected" : ""}" data-finding="${escapeHtml(item.id)}">
+                  <span class="severity-dot ${severityClass(item.severity)}"></span>
+                  <span>
+                    <strong>${escapeHtml(item.id)}</strong>
+                    <small>${escapeHtml(shortAgent(item.agent))}</small>
+                  </span>
+                  <em>${escapeHtml(item.severity)}</em>
+                </button>
+              `,
+            )
+            .join("")}
+        </div>
+      </div>
+      <article class="finding-detail">
+        <div class="detail-top">
+          <span>${escapeHtml(finding.id)} / ${escapeHtml(shortAgent(finding.agent))} / ${escapeHtml(priorityLevel(finding.priority))}</span>
+          <strong class="severity ${severityClass(finding.severity)}">${escapeHtml(finding.severity)}</strong>
+        </div>
+        <h3>${escapeHtml(finding.risk)}</h3>
+        <blockquote>${escapeHtml(finding.evidence)}</blockquote>
+        <dl class="detail-grid">
+          <div><dt>Confidence</dt><dd>${escapeHtml(finding.confidence)}</dd></div>
+          <div><dt>Founder gate</dt><dd>${escapeHtml(finding.priority)}</dd></div>
+          <div><dt>Why it matters</dt><dd>${escapeHtml(finding.impact)}</dd></div>
+          <div><dt>Remediation</dt><dd>${escapeHtml(finding.remediation)}</dd></div>
+        </dl>
+      </article>
+      <aside class="remediation-rail">
+        <div class="rail-block">
+          <span>P0 founder actions</span>
+          ${renderRailItems(p0)}
+        </div>
+        <div class="rail-block">
+          <span>P1 launch materials</span>
+          ${renderRailItems(p1)}
+        </div>
+      </aside>
+    </div>
+  `;
+}
+
+function renderRailItems(items) {
+  if (items.length === 0) return `<p class="empty">Clear</p>`;
+  return `
+    <ul>
+      ${items.map((item) => `<li><strong>${escapeHtml(item.id)}</strong>${escapeHtml(item.remediation)}</li>`).join("")}
+    </ul>
+  `;
+}
+
+function renderAgents(data) {
+  const reportStatus = new Map(data.judge.reports.map((report) => [report.file, report.status]));
+  return `
+    <div class="agent-board">
+      ${agentRoles
+        .map((agent, index) => {
+          const status = reportStatus.get(agent.file) || "PASS";
+          return `
+            <article class="agent-card">
+              <div class="agent-index">${String(index + 1).padStart(2, "0")}</div>
+              <div>
+                <h3>${escapeHtml(agent.name)}</h3>
+                <p class="agent-question">${escapeHtml(agent.question)}</p>
+                <p>${escapeHtml(agent.focus)}</p>
+              </div>
+              <span class="agent-owner">${escapeHtml(agent.owner)}</span>
+              <span class="agent-status ${status === "PASS" ? "is-pass" : "is-revision"}">${escapeHtml(status)}</span>
+              <code>${escapeHtml(agent.file)}</code>
+            </article>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function renderEvidence(data) {
+  const docs = docSources(data);
+  const active = docs.find(([id]) => id === state.activeDoc) ?? docs[0];
+
+  return `
+    <div class="evidence-board">
+      <div class="doc-tabs">
+        ${docs
+          .map(
+            ([id, title, file]) => `
+              <button type="button" class="${state.activeDoc === id ? "is-active" : ""}" data-doc="${id}">
+                <span>${escapeHtml(title)}</span>
+                <small>${escapeHtml(file)}</small>
+              </button>
+            `,
+          )
+          .join("")}
+      </div>
+      <article class="doc-viewer">
+        <div class="doc-head">
+          <strong>${escapeHtml(active[1])}</strong>
+          <span>${escapeHtml(active[2])}</span>
+        </div>
+        <pre>${escapeHtml(active[3] || "No content available.")}</pre>
+      </article>
+    </div>
+  `;
+}
+
+function renderRun(data) {
+  const output = state.running
+    ? "Running live verification...\n\nPOST /api/run\nnode src/orchestrator.js"
+    : data.runOutput?.stdout?.trim() || "Awaiting local verification.\n\nnode src/orchestrator.js";
+
+  return `
+    <div class="run-board">
+      <article class="terminal">
+        <div class="terminal-head">
+          <strong>Judge terminal</strong>
+          <span>src/orchestrator.js</span>
+        </div>
+        <pre>${escapeHtml(output)}</pre>
+      </article>
+      <aside class="contract-panel">
+        <h3>Verification contract</h3>
+        <div class="checks">
+          ${schemaChecks
+            .map(
+              ([label, meta]) => `
+                <div class="check">
+                  <strong>OK</strong>
+                  <span>${escapeHtml(label)}</span>
+                  <small>${escapeHtml(meta)}</small>
+                </div>
+              `,
+            )
+            .join("")}
+        </div>
+      </aside>
+    </div>
   `;
 }
 
 function renderError() {
   return `
-    <main class="shell">
-      <section class="hero">
-        <div>
-          <div class="eyebrow">Token Launch Lab</div>
-          <h1>Demo server error</h1>
-          <p class="lede">${escapeHtml(state.error || "Unknown error")}</p>
-        </div>
+    <main class="app-shell">
+      <section class="error-state">
+        <span class="kicker">Token Launch Lab</span>
+        <h1>Demo server error</h1>
+        <p>${escapeHtml(state.error || "Unknown error")}</p>
       </section>
     </main>
   `;
+}
+
+function bindEvents() {
+  document.getElementById("runHarness")?.addEventListener("click", runHarness);
+
+  document.querySelectorAll("[data-view]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state = { ...state, activeView: button.dataset.view };
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-finding]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state = { ...state, selectedFindingId: button.dataset.finding };
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-doc]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state = { ...state, activeDoc: button.dataset.doc };
+      render();
+    });
+  });
 }
 
 function render() {
@@ -354,23 +629,20 @@ function render() {
   }
 
   root.innerHTML = `
-    <main class="shell">
+    <main class="app-shell">
       ${renderTopbar(state.data)}
       ${renderBanner()}
-      ${renderHero(state.data)}
-      ${renderAgents(state.data)}
-      ${renderFindings(state.data)}
-      ${renderTrace(state.data)}
-      ${renderGate(state.data)}
-      ${renderDocs(state.data)}
+      ${renderOverview(state.data)}
+      ${renderMetrics(state.data)}
+      ${renderWorkspace(state.data)}
       <footer class="footer">
-        <span>Public repo: github.com/leini8891/token-launch-lab</span>
+        <span>github.com/leini8891/token-launch-lab</span>
         <span>Defensive review only. No exploit instructions. No legal advice.</span>
       </footer>
     </main>
   `;
 
-  document.getElementById("runHarness")?.addEventListener("click", runHarness);
+  bindEvents();
 }
 
 loadReport();

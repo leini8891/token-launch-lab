@@ -56,7 +56,9 @@ function parseLineValue(markdown, label) {
 }
 
 function parseFindings(killReport) {
-  const matches = [...killReport.matchAll(/^###\s+\d+\.\s+([^:]+):\s+(.+)\n([\s\S]*?)(?=\n###\s+\d+\.|\n##\s+|$)/gm)];
+  const matches = [
+    ...killReport.matchAll(/^###\s+\d+\.\s+([^:]+):\s+(.+)\n([\s\S]*?)(?=\n###\s+\d+\.|\n##\s+|(?![\s\S]))/gm),
+  ];
   return matches.map((match) => {
     const body = match[3];
     return {
@@ -71,6 +73,36 @@ function parseFindings(killReport) {
       remediation: parseLineValue(body, "Remediation"),
     };
   });
+}
+
+function parseSpecFacts(specText) {
+  const lineValue = (label) => specText.match(new RegExp(`^${label}:\\s*(.+)$`, "im"))?.[1]?.trim() ?? "";
+  const bulletValue = (label) => specText.match(new RegExp(`^- ${label}:\\s*(.+)$`, "im"))?.[1]?.trim() ?? "";
+  const sectionBullets = (heading) => {
+    const match = specText.match(new RegExp(`## ${heading}\\n\\n([\\s\\S]*?)(?=\\n## |$)`, "i"));
+    if (!match) return [];
+    return match[1]
+      .split("\n")
+      .map((line) => line.replace(/^- /, "").trim())
+      .filter(Boolean);
+  };
+
+  return {
+    projectName: lineValue("Name"),
+    category: lineValue("Category"),
+    launchGoal: specText.match(/## Launch Goal\n\n([\s\S]*?)(?=\n## |$)/i)?.[1]?.trim() ?? "",
+    totalSupply: lineValue("Total supply"),
+    initialFloat: lineValue("Initial circulating supply at TGE"),
+    teamUnlock: bulletValue("Team"),
+    investorUnlock: bulletValue("Investors"),
+    communityIncentives: bulletValue("Community incentives"),
+    treasuryControl: bulletValue("Treasury"),
+    liquidity: bulletValue("Liquidity and market making"),
+    auditStatus: specText.match(/^- External audit .+$/im)?.[0]?.replace(/^- /, "") ?? "",
+    pauseStatus: specText.match(/^- Emergency pause .+$/im)?.[0]?.replace(/^- /, "") ?? "",
+    distribution: sectionBullets("Distribution"),
+    founderConcerns: sectionBullets("Known Concerns From Founder"),
+  };
 }
 
 function parseJudge(judgeEvaluation) {
@@ -109,15 +141,17 @@ async function buildReportPayload(runOutput = null) {
   const killReport = docs.killReport;
   const judge = parseJudge(docs.judgeEvaluation);
   const findings = parseFindings(killReport);
+  const specFacts = parseSpecFacts(docs.tgeSpec);
 
   return {
     project: {
       name: "Token Launch Lab",
-      subject: "HarborUSD TGE",
-      track: "Harness / Skills",
-      tagline: "A Codex-backed adversarial harness that stress-tests token launches before they go public.",
+      subject: `${specFacts.projectName || "HarborUSD"} TGE`,
+      track: "Founder launch pre-mortem",
+      tagline: "A Codex-backed adversarial harness that turns a token launch spec into verified blockers, evidence, and founder-ready remediation.",
       generatedAt: new Date().toISOString(),
     },
+    specFacts,
     launchReadiness: {
       score: Number(killReport.match(/- Score:\s+(\d+)\/100/i)?.[1] ?? 0),
       recommendation: killReport.match(/- Recommendation:\s+(.+)/i)?.[1]?.trim() ?? "UNKNOWN",
