@@ -18,6 +18,10 @@ then a Judge Agent verifies every finding before it ships.
 
 <br/>
 
+<img src="docs/img/token-launch-lab.png" alt="Token Launch Lab — founder pre-mortem dashboard: verified blockers, judge gate, and a NO-GO readiness score" width="820">
+
+<br/>
+
 ```
    ┌─────────────┐   ┌──────────────┐   ┌────────────────┐   ┌──────────────┐
    │  DUMP RISK  │   │ PROTOCOL RISK│   │ REGULATORY RISK│   │  CT ADVERSARY│
