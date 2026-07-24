@@ -12,10 +12,12 @@ evidence behind every finding.
 
 <br/>
 
+[![Live Demo](https://img.shields.io/badge/%E2%96%B6_Live_Demo-Try_it-1f62a8?style=for-the-badge)](https://token-launch-lab.onrender.com/)
 [![For](https://img.shields.io/badge/For-Crypto%20Founders-7c3aed?style=for-the-badge)](#-what-it-does)
-[![Powered by GLM](https://img.shields.io/badge/Powered%20by-GLM%20(Zhipu)-1f62a8?style=for-the-badge)](https://open.bigmodel.cn)
-[![Node](https://img.shields.io/badge/Node-%E2%89%A520-339933?style=for-the-badge&logo=node.js&logoColor=white)](package.json)
+[![Powered by GLM](https://img.shields.io/badge/Powered%20by-GLM%20(Zhipu)-000000?style=for-the-badge)](https://open.bigmodel.cn)
 [![Mode](https://img.shields.io/badge/Mode-Defensive%20Only-22c55e?style=for-the-badge)](#-safety-boundaries)
+
+**▶ Try it live: [token-launch-lab.onrender.com](https://token-launch-lab.onrender.com/)** — free instance, first load may take ~40s to wake up. No key? Click **View sample (HarborUSD)**.
 
 <br/>
 
