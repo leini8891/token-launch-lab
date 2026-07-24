@@ -56,6 +56,35 @@ async function loadReport(id) {
   return JSON.parse(await readFile(file, "utf8"));
 }
 
+// In-memory rate limit to protect the GLM budget on a public deployment.
+// Resets on restart — fine for a demo. Only guards the expensive /api/analyze.
+const RATE_PER_IP_PER_DAY = Number(process.env.RATE_PER_IP_PER_DAY ?? 5);
+const RATE_GLOBAL_PER_DAY = Number(process.env.RATE_GLOBAL_PER_DAY ?? 100);
+const DAY_MS = 24 * 60 * 60 * 1000;
+const ipHits = new Map();
+let globalHits = [];
+
+function checkRateLimit(req) {
+  const now = Date.now();
+  const cutoff = now - DAY_MS;
+  globalHits = globalHits.filter((t) => t > cutoff);
+  if (globalHits.length >= RATE_GLOBAL_PER_DAY) {
+    return "This demo has reached its daily analysis limit. Please try again tomorrow.";
+  }
+  const ip =
+    req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
+    req.socket?.remoteAddress ||
+    "unknown";
+  const hits = (ipHits.get(ip) || []).filter((t) => t > cutoff);
+  if (hits.length >= RATE_PER_IP_PER_DAY) {
+    return `You've reached the demo limit of ${RATE_PER_IP_PER_DAY} reports/day. Please try again tomorrow.`;
+  }
+  hits.push(now);
+  ipHits.set(ip, hits);
+  globalHits.push(now);
+  return null; // allowed
+}
+
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -270,6 +299,11 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "POST" && req.url?.startsWith("/api/analyze")) {
+      const limited = checkRateLimit(req);
+      if (limited) {
+        sendJson(res, { error: limited }, 429);
+        return;
+      }
       let body;
       try {
         body = await readJsonBody(req);
@@ -309,6 +343,9 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, "127.0.0.1", () => {
-  console.log(`Token Launch Lab demo UI: http://127.0.0.1:${PORT}`);
+// Bind all interfaces so the app is reachable when deployed (Render, etc.).
+// Locally this still serves on http://127.0.0.1:PORT.
+const HOST = process.env.HOST ?? "0.0.0.0";
+server.listen(PORT, HOST, () => {
+  console.log(`Token Launch Lab listening on http://${HOST}:${PORT}`);
 });
