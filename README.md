@@ -2,174 +2,137 @@
 
 # 🧪 Token Launch Lab
 
-### *An AI red team that tries to kill your token launch — before mainnet does.*
+### *An AI red team that tries to kill your token launch — before the market does.*
 
-Token launches are irreversible. One bad vesting schedule, one missed exploit vector,
+Token launches are irreversible. One bad vesting schedule, one missing audit,
 one weak narrative, or one regulatory blind spot can torch a launch **in public**.
-Token Launch Lab runs adversarial AI agents that attack your launch from every angle,
-then a Judge Agent verifies every finding before it ships.
+Upload your whitepaper or TGE doc and four adversarial AI reviewers read it, then
+hand you back a **GO / NO-GO decision**, the exact things to fix first, and the
+evidence behind every finding.
 
 <br/>
 
-[![Track](https://img.shields.io/badge/Track-Harness%20%2F%20Skills-7c3aed?style=for-the-badge)](SUBMISSION.md)
-[![Powered by Codex](https://img.shields.io/badge/Powered%20by-Codex-000000?style=for-the-badge&logo=openai)](codex-goal.md)
-[![Node](https://img.shields.io/badge/Node-%E2%89%A518-339933?style=for-the-badge&logo=node.js&logoColor=white)](package.json)
-[![License](https://img.shields.io/badge/Mode-Defensive%20Only-22c55e?style=for-the-badge)](#-safety-boundaries)
+[![For](https://img.shields.io/badge/For-Crypto%20Founders-7c3aed?style=for-the-badge)](#-what-it-does)
+[![Powered by GLM](https://img.shields.io/badge/Powered%20by-GLM%20(Zhipu)-1f62a8?style=for-the-badge)](https://open.bigmodel.cn)
+[![Node](https://img.shields.io/badge/Node-%E2%89%A520-339933?style=for-the-badge&logo=node.js&logoColor=white)](package.json)
+[![Mode](https://img.shields.io/badge/Mode-Defensive%20Only-22c55e?style=for-the-badge)](#-safety-boundaries)
 
 <br/>
 
-<img src="docs/img/token-launch-lab.png" alt="Token Launch Lab — founder pre-mortem dashboard: verified blockers, judge gate, and a NO-GO readiness score" width="820">
-
-<br/>
-
-```
-   ┌─────────────┐   ┌──────────────┐   ┌────────────────┐   ┌──────────────┐
-   │  DUMP RISK  │   │ PROTOCOL RISK│   │ REGULATORY RISK│   │  CT ADVERSARY│
-   └──────┬──────┘   └──────┬───────┘   └───────┬────────┘   └──────┬───────┘
-          └─────────────────┴─────────┬─────────┴───────────────────┘
-                                       ▼
-                            ┌──────────────────────┐
-                            │   ⚖️  JUDGE AGENT      │
-                            │  verify · score · kill│
-                            └──────────┬───────────┘
-                                       ▼
-                              📄  KILL REPORT
-```
+<img src="docs/img/token-launch-lab.png" alt="Token Launch Lab report dashboard: a NO-GO readiness score, a Fix-first P0 list, per-adversary risk cards, and per-finding evidence" width="860">
 
 </div>
 
 ---
 
-## 💡 The Thesis
+## 💡 What it does
 
-> The future crypto founder does not need more AI that **agrees** with her.
-> She needs an AI that tries to **kill the launch first** — so reality doesn't get the chance.
+Most AI tools help you *build* launch materials. Token Launch Lab does the opposite —
+it attacks the launch you already have. Drop in a whitepaper, tokenomics doc, or TGE spec
+and it runs a **pre-mortem**: what will kill this launch, ranked, with the fix and the
+quote from your own document that proves it.
 
-Most AI tools help you *build* launch materials. Token Launch Lab does the opposite: it's a
-**Codex-backed adversarial agent harness**, not another friendly chatbot. Codex runs specialized
-agents that each try to break your launch from a different direction, write inspectable markdown
-reports, and submit them to a local Judge Agent that rejects anything without traceable evidence.
-
----
-
-## ⚔️ Meet the Red Team
-
-| Agent | Attacks | Writes |
-|-------|---------|--------|
-| 📉 **Dump Risk** | Investor/team unlocks, TGE float, liquidity & MM allocation, dump pressure | `outputs/dump-risk.md` |
-| 🛡️ **Protocol Risk** | Audit status, pause policy, multisig, incident response readiness | `outputs/protocol-risk.md` |
-| ⚖️ **Regulatory Risk** | Public-sale flags, jurisdiction ambiguity, incentive-campaign risk | `outputs/regulatory-risk.md` |
-| 🐦 **CT Adversary** | Narrative fragility, likely crypto-Twitter criticism, token-necessity & farming optics | `outputs/ct-adversary.md` |
-| 🧑‍⚖️ **Judge / Orchestrator** | Verifies schema, evidence, severity, safety boundaries; computes readiness | `outputs/kill-report.md` |
-
-Every finding must cite an **exact quote** from `tge-spec.md`. No evidence → the Judge rejects it.
+```
+              YOUR WHITEPAPER / TGE DOC  (PDF · Markdown · text · paste)
+                              │
+        ┌─────────────┬───────┴───────┬──────────────────┐
+        ▼             ▼               ▼                  ▼
+   📉 DUMP RISK   🛡️ PROTOCOL RISK  ⚖️ REGULATORY RISK   🐦 NARRATIVE (CT)
+        └─────────────┴───────┬───────┴──────────────────┘
+                              ▼
+                        📄 RISK REPORT
+             GO / NO-GO score · Fix-first P0 list · evidence · remediation
+```
 
 ---
 
-## 🚀 60-Second Quickstart
+## ⚔️ The four adversaries
+
+| Reviewer | Attacks |
+|----------|---------|
+| 📉 **Dump risk** | Investor/team unlocks, TGE float, liquidity & market-maker allocation, launch-day sell pressure |
+| 🛡️ **Protocol risk** | Audit status, emergency pause authority, multisig & treasury control, launch readiness |
+| ⚖️ **Regulatory risk** | Sale/distribution mechanics, jurisdiction & eligibility exposure, security-likeness |
+| 🐦 **Narrative risk** | How Crypto Twitter ("CT") will react — points-farm optics, unsubstantiated claims, promise-vs-mechanics gaps |
+
+Every finding cites a **near-verbatim quote from your document**. If the document doesn't
+say it, the model doesn't claim it.
+
+---
+
+## 🚀 Quickstart
 
 ```bash
 npm install
-node src/orchestrator.js   # run the Judge Agent over the agent reports
-npm run ui                 # launch the live demo UI
 ```
 
-The orchestrator reads the Codex-authored reports in `outputs/`, verifies them, prints
-pass/revision status, computes launch readiness, and writes:
+Add your GLM API key to a local `.env` file (copy from `.env.example`):
 
-- 📄 `outputs/kill-report.md` — ranked failure modes + readiness score
-- 🔧 `outputs/remediation.md` — prioritized defensive fixes
-- 🧑‍⚖️ `outputs/judge-evaluation.md` — the verification verdict
-
-Then open the dashboard:
-
-```text
-http://127.0.0.1:3000
+```bash
+# .env
+GLM_API_KEY=your-key-from-open.bigmodel.cn
 ```
+
+Then start the app and open it in your browser:
+
+```bash
+npm run ui
+# → http://127.0.0.1:3000
+```
+
+Upload a whitepaper / TGE doc (or paste the text) and hit **Generate risk report**.
+A full four-adversary report takes ~1–2 minutes. No key yet? Click **View sample
+(HarborUSD)** to see a demo report instantly.
+
+> The GLM key lives only in your server environment — end users never see or supply it.
+> `.env` and generated `reports/` are gitignored.
 
 ---
 
-## 🏗️ Architecture
+## 🧭 What's in a report
 
-```
-Codex /goal
-  ├─ reads   codex-goal.md · AGENTS.md · tge-spec.md
-  ├─ writes  outputs/dump-risk.md
-  ├─ writes  outputs/protocol-risk.md
-  ├─ writes  outputs/regulatory-risk.md
-  ├─ writes  outputs/ct-adversary.md
-  └─ Judge Agent → node src/orchestrator.js
-                     └─ writes kill-report.md · remediation.md · judge-evaluation.md
-```
+<img src="docs/img/token-launch-lab-intake.png" alt="Token Launch Lab upload screen: drop a PDF or paste your tokenomics to generate a risk report" width="620">
 
-**Why this is a real harness, not a prompt:**
-
-- 🎯 **Codex integration** — `codex-goal.md` is the exact `/goal` prompt.
-- 🤝 **Multi-agent orchestration** — `AGENTS.md` defines five role contracts.
-- 🧠 **Inspectable markdown memory** — agents write to `outputs/`, nothing hidden.
-- ✅ **Verification** — `src/orchestrator.js` checks fields, evidence, severity, confidence, safety.
-- 🏁 **Termination** — the run completes only when **all** reports pass.
-- ♻️ **Recovery loop** — failed reports are revised individually and re-checked.
+- **GO / NO-GO decision** with a 0–100 readiness score.
+- **Fix first** — the P0 blockers you must clear before announcing, each with a concrete fix.
+- **Risk by adversary** — a card per lens (Dump / Protocol / Regulatory / Narrative) with the worst severity and count.
+- **Full findings** — every risk with severity, confidence, the evidence quote, why it matters, and remediation.
+- **Export PDF** — a clean, printable report you can send to a co-founder or counsel.
+- **Share** — a read-only link to the generated report.
 
 ---
 
-## 📊 Scoring
-
-| Dimension | Values |
-|-----------|--------|
-| **Severity** | `low` · `medium` · `high` · `critical` |
-| **Confidence** | `low` · `medium` · `high` |
-| **Evidence** | every finding cites `tge-spec.md` |
-| **Remediation priority** | `P0` · `P1` · `P2` |
-| **Launch readiness** | `0 – 100` |
-
----
-
-## 🎬 Live Demo Flow
-
-1. Open `http://127.0.0.1:3000`.
-2. Show the **HarborUSD Kill Report** and the launch-readiness score.
-3. Click **Run Judge Verification** to run `node src/orchestrator.js` from the UI.
-4. Show `codex-goal.md`, `AGENTS.md`, and `tge-spec.md` inside the evidence panels.
-5. Open `outputs/kill-report.md` if judges want the raw markdown.
-
----
-
-## 🛡️ Safety Boundaries
+## 🛡️ Safety boundaries
 
 This is **defensive launch-risk review only**.
 
-- ❌ Does **not** generate exploit instructions.
-- ❌ Does **not** provide legal advice — output is risk flags for qualified review.
+- ❌ Does **not** generate exploit instructions or attack payloads.
+- ❌ Does **not** give legal advice — regulatory items are risks to review with qualified counsel.
 - ❌ Does **not** produce harassment, misinformation, or market-manipulation content.
-- ✅ All findings are written to inspectable markdown — nothing hidden in opaque state.
+- ✅ Every finding is grounded in a quote from the document you provided.
 
 ---
 
-## 🧰 Legacy Canned Demo
+## 🔧 Config
 
-The older vesting-calculator artifact demo is still available:
-
-```bash
-npm run build
-npm run demo
-npm run test:artifact
-node ./dist/index.js dashboard -p 3000
-```
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `GLM_API_KEY` | — | **Required.** Your GLM (Zhipu) API key. |
+| `GLM_MODEL` | `glm-4.6` | The GLM model used for analysis. |
+| `GLM_BASE_URL` | `https://open.bigmodel.cn/api/paas/v4/chat/completions` | GLM chat-completions endpoint. |
+| `PORT` | `3000` | Local server port. |
 
 ---
 
-## 📂 Repo Map
+## 📂 Repo map
 
 | Path | What's inside |
 |------|---------------|
-| `codex-goal.md` | The exact Codex `/goal` prompt |
-| `AGENTS.md` | Agent role contracts + finding schema |
-| `tge-spec.md` | Shared input the agents red-team |
-| `src/orchestrator.js` | The Judge Agent / verifier |
-| `outputs/` | Inspectable agent memory + final reports |
-| `web/` | Live demo dashboard |
-| `PITCH.md` · `SUBMISSION.md` | The story & the submission |
+| `src/analyze.js` | Reads the uploaded doc (PDF → text), calls GLM, shapes the risk report |
+| `src/demo-server.js` | HTTP server: upload endpoint, report storage, share links, static UI |
+| `web/` | The product UI (upload screen + report dashboard) |
+| `tge-spec.md` · `outputs/` | The built-in **HarborUSD** sample report |
+| `.env.example` | Copy to `.env` and add your key |
 
 ---
 
@@ -177,10 +140,6 @@ node ./dist/index.js dashboard -p 3000
 
 ### Built for crypto founders who'd rather be killed in private than in public.
 
-**Read the full pitch → [`PITCH.md`](PITCH.md)**
-
-<br/>
-
-*Contributors: ElenaX &lt;leini8891@qq.com&gt;*
+*Contributor: Elena Xiao &lt;leini8891@gmail.com&gt;*
 
 </div>

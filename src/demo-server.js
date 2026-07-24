@@ -1,14 +1,60 @@
+import "./env.js"; // must be first: loads .env before other modules read process.env
 import { execFile } from "node:child_process";
 import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { analyzeDocument } from "./analyze.js";
+
+const MAX_UPLOAD_BYTES = 40 * 1024 * 1024; // 40MB request cap (PDF base64 inflates ~33%)
+
+function readJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > MAX_UPLOAD_BYTES) {
+        reject(Object.assign(new Error("Document is too large (max 40MB)."), { status: 413 }));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      } catch {
+        reject(Object.assign(new Error("Invalid request body."), { status: 400 }));
+      }
+    });
+    req.on("error", reject);
+  });
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const ROOT = path.resolve(path.dirname(__filename), "..");
 const WEB_ROOT = path.join(ROOT, "web");
+const REPORTS_DIR = path.join(ROOT, "reports");
 const PORT = Number(process.env.PORT ?? 3000);
+
+// Persist a generated report so it can be re-opened via a shareable /?r=<id> link.
+async function saveReport(payload) {
+  await mkdir(REPORTS_DIR, { recursive: true });
+  const id = randomBytes(9).toString("base64url"); // 12-char url-safe id
+  payload.id = id;
+  await writeFile(path.join(REPORTS_DIR, `${id}.json`), JSON.stringify(payload), "utf8");
+  return id;
+}
+
+async function loadReport(id) {
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) return null; // guard against path traversal
+  const file = path.join(REPORTS_DIR, `${id}.json`);
+  if (!existsSync(file)) return null;
+  return JSON.parse(await readFile(file, "utf8"));
+}
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -209,6 +255,46 @@ const server = createServer(async (req, res) => {
     if (req.method === "POST" && req.url?.startsWith("/api/run")) {
       const runOutput = await runOrchestrator();
       sendJson(res, await buildReportPayload(runOutput), runOutput.ok ? 200 : 422);
+      return;
+    }
+
+    if (req.method === "GET" && req.url?.startsWith("/api/r/")) {
+      const id = decodeURIComponent(new URL(req.url, `http://${req.headers.host}`).pathname.slice("/api/r/".length));
+      const report = await loadReport(id);
+      if (!report) {
+        sendJson(res, { error: "Report not found or expired." }, 404);
+        return;
+      }
+      sendJson(res, report);
+      return;
+    }
+
+    if (req.method === "POST" && req.url?.startsWith("/api/analyze")) {
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (error) {
+        sendJson(res, { error: error.message }, error.status ?? 400);
+        return;
+      }
+      const kind = body.kind === "pdf" ? "pdf" : "text";
+      try {
+        const payload = await analyzeDocument({
+          kind,
+          data: body.data ?? "",
+          filename: body.filename ?? "",
+        });
+        try {
+          await saveReport(payload); // sets payload.id; enables the share link
+        } catch {
+          // Storage is best-effort — the report still returns without a share id.
+        }
+        sendJson(res, payload);
+      } catch (error) {
+        const rawMessage = error instanceof Error ? error.message : String(error);
+        const status = error?.status ?? 500;
+        sendJson(res, { error: rawMessage }, status);
+      }
       return;
     }
 

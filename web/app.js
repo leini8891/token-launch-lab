@@ -21,7 +21,7 @@ const agentRoles = [
     focus: "Distribution mechanics, sale design, jurisdiction exposure, and communications.",
   },
   {
-    name: "CT Adversary Agent",
+    name: "Narrative Adversary (Crypto Twitter)",
     file: "outputs/ct-adversary.md",
     owner: "Narrative",
     question: "What will the market dunk on before users see the product?",
@@ -52,38 +52,15 @@ const views = [
   ["run", "Judge"],
 ];
 
-const launchStages = [
-  {
-    label: "Public sale",
-    match: ["public sale", "fundraising", "airdrop"],
-    fallback: "REG-001",
-    owner: "Counsel",
-  },
-  {
-    label: "CEX track",
-    match: ["cex", "listing"],
-    fallback: "DUMP-001",
-    owner: "Markets",
-  },
-  {
-    label: "Mainnet",
-    match: ["mainnet", "deployment"],
-    fallback: "PROTO-001",
-    owner: "Protocol",
-  },
-  {
-    label: "Campaigns",
-    match: ["campaign"],
-    fallback: "CT-002",
-    owner: "Growth",
-  },
-  {
-    label: "Narrative",
-    match: ["narrative", "materials"],
-    fallback: "CT-001",
-    owner: "Founder",
-  },
+// The four adversarial lenses, used for the per-agent risk summary row.
+const riskLenses = [
+  { name: "Dump Risk Agent", label: "Dump risk", blurb: "Unlocks & sell pressure" },
+  { name: "Protocol Risk Agent", label: "Protocol risk", blurb: "Audit, multisig, pause" },
+  { name: "Regulatory Risk Agent", label: "Regulatory risk", blurb: "Sale & jurisdiction" },
+  { name: "CT Adversary Agent", label: "Narrative risk", blurb: "How Crypto Twitter reacts" },
 ];
+
+const severityOrder = ["low", "medium", "high", "critical"];
 
 let state = {
   data: null,
@@ -94,6 +71,12 @@ let state = {
   activeView: "findings",
   activeDoc: "tgeSpec",
   selectedFindingId: null,
+  // Intake / analysis flow
+  view: "intake", // "intake" | "dashboard"
+  analyzing: false,
+  analyzeError: null,
+  intakeText: "",
+  pendingFile: null, // { name, kind: "pdf" | "text", data }
 };
 
 function escapeHtml(value = "") {
@@ -110,11 +93,13 @@ function severityClass(value = "") {
 }
 
 function shortAgent(name = "") {
-  return name
-    .replace(" Risk Agent", "")
-    .replace(" Adversary Agent", "")
-    .replace("Regulatory", "Reg")
-    .replace("Protocol", "Proto");
+  const map = {
+    "Dump Risk Agent": "Dump",
+    "Protocol Risk Agent": "Protocol",
+    "Regulatory Risk Agent": "Regulatory",
+    "CT Adversary Agent": "Narrative",
+  };
+  return map[name] || name;
 }
 
 function percent(score = 0) {
@@ -124,6 +109,7 @@ function percent(score = 0) {
 function formatStatus(data) {
   if (state.running) return "Judge running";
   if (state.lastRunAt) return `Verified ${state.lastRunAt}`;
+  if (data?.generated && data?.launchReadiness?.recommendation) return data.launchReadiness.recommendation;
   if (data?.judge?.revisionReports > 0) return "Needs revision";
   if (data?.launchReadiness?.recommendation) return `${data.launchReadiness.recommendation} verified`;
   return "Dossier loaded";
@@ -163,14 +149,6 @@ function p0Findings(data) {
 
 function p1Findings(data) {
   return data.findings.filter((finding) => priorityLevel(finding.priority) === "P1");
-}
-
-function stageFinding(data, stage) {
-  return (
-    data.findings.find((finding) =>
-      stage.match.some((word) => `${finding.priority} ${finding.risk} ${finding.remediation}`.toLowerCase().includes(word)),
-    ) ?? data.findings.find((finding) => finding.id === stage.fallback)
-  );
 }
 
 function readinessCopy(readiness) {
@@ -238,6 +216,164 @@ async function runHarness() {
   render();
 }
 
+function readFileAsPending(file) {
+  const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Could not read the file."));
+    reader.onload = () => {
+      if (isPdf) {
+        const result = String(reader.result);
+        const base64 = result.slice(result.indexOf(",") + 1);
+        resolve({ name: file.name, kind: "pdf", data: base64 });
+      } else {
+        resolve({ name: file.name, kind: "text", data: String(reader.result) });
+      }
+    };
+    if (isPdf) reader.readAsDataURL(file);
+    else reader.readAsText(file);
+  });
+}
+
+async function analyze() {
+  let source = state.pendingFile;
+  if (!source) {
+    const text = state.intakeText.trim();
+    if (!text) return;
+    source = { name: "pasted-document.md", kind: "text", data: state.intakeText };
+  }
+
+  state = { ...state, analyzing: true, analyzeError: null };
+  render();
+
+  try {
+    const data = await fetchJson("/api/analyze", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        kind: source.kind,
+        data: source.data,
+        filename: source.name,
+      }),
+    });
+    state = {
+      ...state,
+      data,
+      analyzing: false,
+      analyzeError: null,
+      view: "dashboard",
+      activeView: "findings",
+      selectedFindingId: null,
+      lastRunAt: null,
+      runStarted: false,
+    };
+    ensureSelection(data);
+  } catch (error) {
+    state = { ...state, analyzing: false, analyzeError: error.message };
+  }
+  render();
+}
+
+function newAnalysis() {
+  state = {
+    ...state,
+    view: "intake",
+    data: null,
+    analyzeError: null,
+    pendingFile: null,
+    intakeText: "",
+  };
+  render();
+}
+
+async function loadSample() {
+  state = { ...state, analyzing: true, analyzeError: null };
+  render();
+  try {
+    const data = await fetchJson("/api/report");
+    state = { ...state, data, analyzing: false, view: "dashboard", activeView: "findings" };
+    ensureSelection(data);
+  } catch (error) {
+    state = { ...state, analyzing: false, analyzeError: error.message };
+  }
+  render();
+}
+
+function renderIntake() {
+  const hasInput = Boolean(state.pendingFile) || state.intakeText.trim().length > 0;
+  const fileLabel = state.pendingFile
+    ? `${escapeHtml(state.pendingFile.name)} ready`
+    : "Drop a PDF, Markdown, or text file — or click to browse";
+
+  return `
+    <main class="intake-shell">
+      <section class="intake-card">
+        <div class="intake-head">
+          <span class="brand-sigil">TL</span>
+          <div>
+            <strong>Token Launch Lab</strong>
+            <small>Upload a whitepaper or TGE doc → get an adversarial risk report</small>
+          </div>
+        </div>
+        <h1>Know what can kill the TGE before the market does.</h1>
+        <p class="intake-lede">Four adversaries — Dump, Protocol, Regulatory, and Narrative (Crypto Twitter) — read your document and return launch blockers, evidence, and founder-ready remediation.</p>
+
+        ${state.analyzeError ? `<div class="banner is-error">Error: ${escapeHtml(state.analyzeError)}</div>` : ""}
+
+        <label class="dropzone ${state.pendingFile ? "has-file" : ""}" for="fileInput">
+          <input type="file" id="fileInput" accept=".pdf,.md,.markdown,.txt,text/plain,text/markdown,application/pdf" ${state.analyzing ? "disabled" : ""} />
+          <span class="dropzone-icon" aria-hidden="true">${state.pendingFile ? "OK" : "↑"}</span>
+          <span class="dropzone-label">${fileLabel}</span>
+        </label>
+
+        <div class="intake-or"><span>or paste the document text</span></div>
+
+        <textarea id="intakeText" class="intake-textarea" placeholder="Paste tokenomics, allocation, vesting, distribution, and launch plan..." ${state.analyzing ? "disabled" : ""}>${escapeHtml(state.intakeText)}</textarea>
+
+        <div class="intake-actions">
+          <button type="button" class="run-button" id="analyzeBtn" ${state.analyzing || !hasInput ? "disabled" : ""}>
+            ${state.analyzing ? "Analyzing…" : "Generate risk report"}
+          </button>
+          <button type="button" class="link-button" id="sampleBtn" ${state.analyzing ? "disabled" : ""}>View sample (HarborUSD)</button>
+        </div>
+
+        ${
+          state.analyzing
+            ? `<div class="intake-progress">Reading the document and running four adversaries (Dump · Protocol · Regulatory · CT). A full report takes 1–2 minutes — hang tight, this page will update automatically.</div>`
+            : `<p class="intake-note">Runs on GLM (Zhipu). Defensive review only — no exploit instructions, no legal advice. Your document text is sent to the GLM API for analysis.</p>`
+        }
+      </section>
+    </main>
+  `;
+}
+
+function bindIntakeEvents() {
+  const fileInput = document.getElementById("fileInput");
+  fileInput?.addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const pending = await readFileAsPending(file);
+      state = { ...state, pendingFile: pending, analyzeError: null };
+      render();
+    } catch (error) {
+      state = { ...state, analyzeError: error.message };
+      render();
+    }
+  });
+
+  const textarea = document.getElementById("intakeText");
+  textarea?.addEventListener("input", (event) => {
+    // Update value without a full re-render so the caret stays put.
+    state.intakeText = event.target.value;
+    const btn = document.getElementById("analyzeBtn");
+    if (btn) btn.disabled = state.analyzing || !(state.pendingFile || state.intakeText.trim());
+  });
+
+  document.getElementById("analyzeBtn")?.addEventListener("click", analyze);
+  document.getElementById("sampleBtn")?.addEventListener("click", loadSample);
+}
+
 function renderTopbar(data) {
   return `
     <header class="command-bar">
@@ -248,26 +384,26 @@ function renderTopbar(data) {
           <small>${escapeHtml(data.project.track)}</small>
         </span>
       </div>
-      <div class="pipeline">
-        <span>Spec intake</span>
-        <span>4 adversaries</span>
-        <span>Judge gate</span>
-        <span>Founder brief</span>
-      </div>
       <div class="command-actions">
         <span class="status-chip ${state.running ? "is-running" : ""}">${escapeHtml(formatStatus(data))}</span>
-        <button class="run-button" type="button" id="runHarness" ${state.running ? "disabled" : ""} title="Run the local judge verifier">
+        <button class="link-button" type="button" id="newAnalysis" title="Analyze another document">New analysis</button>
+        ${
+          data.generated
+            ? `<button class="link-button" type="button" id="exportPdf" title="Save this report as a PDF">Export PDF</button>
+               ${data.id ? `<button class="run-button" type="button" id="shareReport" title="Copy a read-only link to this report">Share</button>` : ""}`
+            : `<button class="run-button" type="button" id="runHarness" ${state.running ? "disabled" : ""} title="Run the local judge verifier">
           <span aria-hidden="true">${state.running ? "..." : "RUN"}</span>
           ${state.running ? "Running" : "Run Judge"}
-        </button>
+        </button>`
+        }
       </div>
     </header>
   `;
 }
 
-function renderBanner() {
+function renderBanner(data) {
   if (state.running) {
-    return `<div class="banner is-running">POST /api/run is executing node src/orchestrator.js.</div>`;
+    return `<div class="banner is-running">Re-running the local verifier…</div>`;
   }
 
   if (state.error) {
@@ -275,10 +411,20 @@ function renderBanner() {
   }
 
   if (state.lastRunAt) {
-    return `<div class="banner is-ok">Verification completed at ${escapeHtml(state.lastRunAt)}. Generated markdown is reflected below.</div>`;
+    return `<div class="banner is-ok">Verification completed at ${escapeHtml(state.lastRunAt)}.</div>`;
   }
 
-  return `<div class="banner">Founder dossier loaded from tge-spec.md, outputs/*.md, and src/orchestrator.js.</div>`;
+  if (data.generated) {
+    const p0 = p0Findings(data).length;
+    const src = data.project?.source || "your document";
+    return `<div class="banner">Report for <strong>${escapeHtml(
+      data.specFacts.projectName || "your project",
+    )}</strong> — ${data.findings.length} findings, ${p0} P0 blocker${p0 === 1 ? "" : "s"} · from ${escapeHtml(
+      src,
+    )} via ${escapeHtml(data.engine || "AI")}.</div>`;
+  }
+
+  return `<div class="banner">Sample report — HarborUSD (demo data). Upload your own doc with “New analysis”.</div>`;
 }
 
 function renderOverview(data) {
@@ -319,7 +465,6 @@ function renderOverview(data) {
             <span>${counts.critical} critical, ${counts.high} high, ${p0Count} P0 fixes</span>
           </div>
         </div>
-        ${renderLaunchRadar(data)}
         <div class="risk-bars" aria-label="Severity counts">
           ${renderRiskBar("critical", counts.critical)}
           ${renderRiskBar("high", counts.high)}
@@ -340,45 +485,69 @@ function renderRiskBar(label, count) {
   `;
 }
 
-function renderLaunchRadar(data) {
-  const counts = severityCounts(data.findings);
+function renderTopActions(data) {
+  const p0 = p0Findings(data);
+  if (p0.length === 0) {
+    return `
+      <section class="fix-first is-clear">
+        <div class="fix-first-head">
+          <span class="kicker">Before you announce</span>
+          <strong>No P0 blockers</strong>
+        </div>
+        <p class="fix-first-note">Nothing must be fixed before announcing. Work through the P1 items in the blocker queue below before the gated stage.</p>
+      </section>
+    `;
+  }
   return `
-    <div class="launch-radar" aria-label="Launch risk radar">
-      <span class="radar-axis is-top">Reg</span>
-      <span class="radar-axis is-right">CT</span>
-      <span class="radar-axis is-bottom">Proto</span>
-      <span class="radar-axis is-left">Dump</span>
-      <span class="radar-pulse critical" style="--x: 50%; --y: 18%">${counts.critical}</span>
-      <span class="radar-pulse high" style="--x: 77%; --y: 48%">${counts.high}</span>
-      <span class="radar-pulse medium" style="--x: 48%; --y: 74%">${counts.medium}</span>
-      <span class="radar-pulse low" style="--x: 23%; --y: 48%">${counts.low}</span>
-    </div>
+    <section class="fix-first">
+      <div class="fix-first-head">
+        <span class="kicker">Do this before you announce</span>
+        <strong>Fix first — ${p0.length} P0 blocker${p0.length === 1 ? "" : "s"}</strong>
+      </div>
+      <ol class="fix-first-list">
+        ${p0
+          .map(
+            (finding) => `
+              <li class="fix-first-item">
+                <span class="severity-dot ${severityClass(finding.severity)}"></span>
+                <span class="fix-first-body">
+                  <strong>${escapeHtml(finding.id)} · ${escapeHtml(finding.risk)}</strong>
+                  <span>${escapeHtml(finding.remediation)}</span>
+                </span>
+                <button type="button" class="fix-first-jump" data-jump-finding="${escapeHtml(finding.id)}">Details</button>
+              </li>
+            `,
+          )
+          .join("")}
+      </ol>
+    </section>
   `;
 }
 
-function renderMetrics(data) {
-  const gates = launchStages.map((stage) => {
-    const finding = stageFinding(data, stage);
-    return [
-      stage.label,
-      finding?.id ?? "CLEAR",
-      finding ? `${stage.owner} / ${priorityLevel(finding.priority)}` : "No blocker",
-      finding?.severity ?? "low",
-    ];
-  });
+function worstSeverity(findings) {
+  return findings.reduce((worst, finding) => {
+    const rank = severityOrder.indexOf(severityClass(finding.severity));
+    return rank > severityOrder.indexOf(worst) ? severityClass(finding.severity) : worst;
+  }, "low");
+}
 
+function renderAgentSummary(data) {
+  const findings = data.findings ?? [];
   return `
-    <section class="metric-grid" aria-label="Founder launch gates">
-      ${gates
-        .map(
-          ([label, value, note, severity]) => `
-            <article class="metric ${severityClass(severity)}">
-              <span>${escapeHtml(label)}</span>
-              <strong>${escapeHtml(value)}</strong>
-              <small>${escapeHtml(note)}</small>
+    <section class="metric-grid" aria-label="Risk by adversary">
+      ${riskLenses
+        .map((lens) => {
+          const items = findings.filter((finding) => finding.agent === lens.name);
+          const worst = items.length ? worstSeverity(items) : "clear";
+          const label = items.length ? worst : "Clear";
+          return `
+            <article class="metric ${worst}">
+              <span>${escapeHtml(lens.label)}</span>
+              <strong>${items.length}</strong>
+              <small><em class="metric-tag ${worst}">${escapeHtml(label)}</em> · ${escapeHtml(lens.blurb)}</small>
             </article>
-          `,
-        )
+          `;
+        })
         .join("")}
     </section>
   `;
@@ -580,6 +749,58 @@ function renderRun(data) {
   `;
 }
 
+function renderPrintReport(data) {
+  const readiness = data.launchReadiness;
+  const facts = data.specFacts;
+  const p0 = p0Findings(data);
+  const date = new Date().toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  const findingBlock = (f) => `
+    <div class="pr-finding">
+      <div class="pr-finding-head">
+        <strong>${escapeHtml(f.id)} · ${escapeHtml(f.risk)}</strong>
+        <span>${escapeHtml(f.severity)} · ${escapeHtml(f.priority)} · ${escapeHtml(shortAgent(f.agent))}</span>
+      </div>
+      <p class="pr-evidence">“${escapeHtml(f.evidence)}”</p>
+      <p><b>Why it matters:</b> ${escapeHtml(f.impact)}</p>
+      <p><b>Remediation:</b> ${escapeHtml(f.remediation)}</p>
+    </div>
+  `;
+
+  return `
+    <div class="print-report">
+      <div class="pr-titlebar">
+        <span>Token Launch Lab — Launch Risk Report</span>
+        <span>${escapeHtml(date)}</span>
+      </div>
+      <h1 class="pr-h1">${escapeHtml(facts.projectName || "Token launch")} <small>${escapeHtml(facts.category || "")}</small></h1>
+      <div class="pr-decision pr-${(readiness.recommendation || "").toLowerCase().replace(/[^a-z]/g, "")}">
+        Decision: <strong>${escapeHtml(readiness.recommendation)}</strong> · Readiness ${escapeHtml(String(readiness.score))}/100
+        · ${data.findings.length} findings, ${p0.length} P0
+      </div>
+      ${readiness.rationale ? `<p class="pr-rationale">${escapeHtml(readiness.rationale)}</p>` : ""}
+
+      ${
+        p0.length
+          ? `<h2 class="pr-h2">Fix first — ${p0.length} P0 blocker${p0.length === 1 ? "" : "s"}</h2>
+             <ol class="pr-fixlist">${p0
+               .map((f) => `<li><strong>${escapeHtml(f.id)} · ${escapeHtml(f.risk)}</strong><br>${escapeHtml(f.remediation)}</li>`)
+               .join("")}</ol>`
+          : `<h2 class="pr-h2">No P0 blockers</h2>`
+      }
+
+      <h2 class="pr-h2">All findings (${data.findings.length})</h2>
+      ${data.findings.map(findingBlock).join("")}
+
+      <div class="print-watermark">Generated by Token Launch Lab · leini8891@gmail.com · Defensive review only — not legal advice.</div>
+    </div>
+  `;
+}
+
 function renderError() {
   return `
     <main class="app-shell">
@@ -594,6 +815,23 @@ function renderError() {
 
 function bindEvents() {
   document.getElementById("runHarness")?.addEventListener("click", runHarness);
+  document.getElementById("newAnalysis")?.addEventListener("click", newAnalysis);
+  document.getElementById("exportPdf")?.addEventListener("click", () => window.print());
+  document.getElementById("shareReport")?.addEventListener("click", async (event) => {
+    const id = state.data?.id;
+    if (!id) return;
+    const url = `${location.origin}/?r=${id}`;
+    const button = event.currentTarget;
+    try {
+      await navigator.clipboard.writeText(url);
+      button.textContent = "Link copied";
+      setTimeout(() => {
+        button.textContent = "Share";
+      }, 1600);
+    } catch {
+      window.prompt("Copy this read-only link:", url);
+    }
+  });
 
   document.querySelectorAll("[data-view]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -609,6 +847,13 @@ function bindEvents() {
     });
   });
 
+  document.querySelectorAll("[data-jump-finding]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state = { ...state, activeView: "findings", selectedFindingId: button.dataset.jumpFinding };
+      render();
+    });
+  });
+
   document.querySelectorAll("[data-doc]").forEach((button) => {
     button.addEventListener("click", () => {
       state = { ...state, activeDoc: button.dataset.doc };
@@ -619,6 +864,13 @@ function bindEvents() {
 
 function render() {
   const root = document.getElementById("app");
+
+  if (state.view === "intake") {
+    root.innerHTML = renderIntake();
+    bindIntakeEvents();
+    return;
+  }
+
   if (state.error && !state.data) {
     root.innerHTML = renderError();
     return;
@@ -631,18 +883,36 @@ function render() {
   root.innerHTML = `
     <main class="app-shell">
       ${renderTopbar(state.data)}
-      ${renderBanner()}
+      ${renderBanner(state.data)}
       ${renderOverview(state.data)}
-      ${renderMetrics(state.data)}
+      ${renderTopActions(state.data)}
+      ${renderAgentSummary(state.data)}
       ${renderWorkspace(state.data)}
       <footer class="footer">
         <span>github.com/leini8891/token-launch-lab</span>
         <span>Defensive review only. No exploit instructions. No legal advice.</span>
       </footer>
     </main>
+    ${renderPrintReport(state.data)}
   `;
 
   bindEvents();
 }
 
-loadReport();
+async function loadShared(id) {
+  try {
+    const data = await fetchJson(`/api/r/${encodeURIComponent(id)}`);
+    state = { ...state, data, view: "dashboard", activeView: "findings" };
+    ensureSelection(data);
+  } catch (error) {
+    state = { ...state, view: "intake", analyzeError: `Could not open shared report: ${error.message}` };
+  }
+  render();
+}
+
+const sharedId = new URLSearchParams(location.search).get("r");
+if (sharedId) {
+  loadShared(sharedId);
+} else {
+  render();
+}
